@@ -29,9 +29,10 @@ struct ChooseView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(picker.visible) { chat in
-                            ChatRow(chat: chat, title: picker.title(for: chat), isSelected: picker.selected.contains(chat.id)) {
-                                picker.toggle(chat.id)
+                        ForEach(picker.visible) { conversation in
+                            ConversationRow(conversation: conversation, title: picker.title(for: conversation),
+                                            isSelected: picker.isSelected(conversation)) {
+                                picker.toggle(conversation.id)
                             }
                                 .padding(.horizontal, 18)
                             Divider().overlay(Theme.hairline)
@@ -57,8 +58,8 @@ struct ChooseView: View {
     }
 }
 
-private struct ChatRow: View {
-    let chat: Chat
+private struct ConversationRow: View {
+    let conversation: Conversation
     let title: String
     let isSelected: Bool
     let toggle: () -> Void
@@ -81,11 +82,11 @@ private struct ChatRow: View {
                     .lineLimit(1)
             }
             Spacer()
-            Text(chat.messageCount.formatted())
+            Text(conversation.messageCount.formatted())
                 .font(Theme.mono(12))
                 .foregroundStyle(Theme.secondary)
                 .frame(width: 90, alignment: .trailing)
-            Text(chat.lastMessageDate.map { $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "")
+            Text(conversation.lastMessageDate.map { $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "")
                 .font(Theme.mono(12))
                 .foregroundStyle(Theme.muted)
                 .frame(width: 90, alignment: .trailing)
@@ -96,9 +97,10 @@ private struct ChatRow: View {
     }
 
     private var subtitle: String {
-        if chat.isGroup { return "Group · \(chat.participants.count) people" }
-        let handle = chat.participants.first ?? chat.identifier
-        return title == handle ? "Not in Contacts" : handle
+        if conversation.isGroup { return "Group · \(conversation.participants.count) people" }
+        let handles = conversation.participants.isEmpty ? [conversation.identifier] : conversation.participants
+        if title == handles.first { return "Not in Contacts" }
+        return handles.count == 1 ? handles[0] : "\(handles[0]) +\(handles.count - 1) more"
     }
 
     private var initials: String {

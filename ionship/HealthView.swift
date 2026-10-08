@@ -54,9 +54,9 @@ struct HealthView: View {
                         .foregroundStyle(Theme.muted)
                 }
                 Spacer()
-                if !person.metrics.observations().isEmpty {
+                if person.metrics.observations().contains(where: \.isActionable) {
                     Circle().fill(Theme.accent).frame(width: 7, height: 7)
-                        .accessibilityLabel("Has something to notice")
+                        .accessibilityLabel("Something changed")
                 }
             }
             .padding(.horizontal, 10)
@@ -108,12 +108,12 @@ private struct PersonHealthDetail: View {
         Grid(horizontalSpacing: 1, verticalSpacing: 1) {
             GridRow {
                 Tile(label: "You start", value: metrics.youStartShare.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "—",
-                     detail: "of \(metrics.conversations.formatted()) conversations")
-                Tile(label: "Your typical reply", value: Elapsed.short(metrics.yourMedianReply),
-                     detail: metrics.yourRecentMedianReply.map { "\(Elapsed.short($0)) in the last 90 days" } ?? "no recent replies")
-                Tile(label: "Their typical reply", value: Elapsed.short(metrics.theirMedianReply), detail: "all time")
-                Tile(label: "Last long conversation", value: metrics.lastLongConversation.map { Elapsed.ago($0) } ?? "—",
-                     detail: metrics.usualGapBetweenLongConversations.map { "usually every \(Elapsed.short($0))" } ?? "20+ messages in one sitting")
+                     detail: "of \(metrics.conversations.formatted()) talks")
+                Tile(label: "Your reply", value: Elapsed.short(metrics.yourMedianReply),
+                     detail: metrics.yourRecentMedianReply.map { "\(Elapsed.short($0)) lately" } ?? "none lately")
+                Tile(label: "Their reply", value: Elapsed.short(metrics.theirMedianReply), detail: "typical")
+                Tile(label: "Long talk", value: metrics.lastLongConversation.map { Elapsed.ago($0) } ?? "—",
+                     detail: metrics.usualGapBetweenLongConversations.map { "usually every \(Elapsed.short($0))" } ?? "none yet")
             }
         }
         .background(Theme.hairline)
@@ -146,7 +146,7 @@ private struct Tile: View {
             Text(value).font(Theme.mono(26).weight(.medium)).tracking(-0.5)
             Text(detail).font(.system(size: 12)).foregroundStyle(Theme.secondary).lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
         .background(Theme.surface)
@@ -189,13 +189,13 @@ enum Elapsed {
 
     static func ago(_ date: Date) -> String {
         let days = Int(Date.now.timeIntervalSince(date) / 86_400)
-        return days == 0 ? "today" : days == 1 ? "1 day ago" : "\(days) days ago"
+        return days == 0 ? "today" : "\(days)d ago"
     }
 }
 
 #Preview {
     HealthView(people: samplePeople()) {}
-        .frame(width: 1280, height: 820)
+        .frame(width: 960, height: 760)
         .background(Theme.ground)
         .foregroundStyle(Theme.ink)
         .preferredColorScheme(.light)
@@ -219,7 +219,7 @@ private func samplePeople() -> [PersonHealth] {
         }
         let chat = Chat(id: id, identifier: title, displayName: title, isGroup: false, participants: [title],
                         messageCount: messages.count, lastMessageDate: messages.last?.date)
-        return PersonHealth(chat: chat, title: title, metrics: RelationshipMetrics.compute(messages))
+        return PersonHealth(conversation: Conversation(chats: [chat]), title: title, metrics: RelationshipMetrics.compute(messages))
     }
     return [person(1, "Mom", myReply: 900, iStartEvery: 5), person(2, "Maya Chen", myReply: 300, iStartEvery: 2)]
 }

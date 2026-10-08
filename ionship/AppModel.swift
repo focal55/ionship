@@ -3,10 +3,10 @@ import IonshipCore
 import Observation
 
 struct PersonHealth: Identifiable, Equatable {
-    let chat: Chat
+    let conversation: Conversation
     let title: String
     let metrics: RelationshipMetrics
-    var id: Int64 { chat.id }
+    var id: Int64 { conversation.id }
 }
 
 @MainActor @Observable
@@ -71,14 +71,16 @@ final class AppModel {
 
     private func analyze() async {
         phase = .analyzing
-        let chats = picker.selectedChats
+        let conversations = picker.selectedConversations
         do {
             let metrics = try await Task.detached {
                 let store = try MessagesStore()
-                return try chats.map { RelationshipMetrics.compute(try store.messages(chatID: $0.id, limit: .max)) }
+                return try conversations.map { conversation in
+                    RelationshipMetrics.compute(try conversation.chatIDs.flatMap { try store.messages(chatID: $0, limit: .max) })
+                }
             }.value
-            people = zip(chats, metrics)
-                .map { PersonHealth(chat: $0, title: picker.title(for: $0), metrics: $1) }
+            people = zip(conversations, metrics)
+                .map { PersonHealth(conversation: $0, title: picker.title(for: $0), metrics: $1) }
                 .sorted { $0.metrics.messageCount > $1.metrics.messageCount }
             phase = .health
         } catch {
