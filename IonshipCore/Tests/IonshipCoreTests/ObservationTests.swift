@@ -35,4 +35,11 @@ import Testing
         #expect(metrics(lastLong: 20 * day, usualGap: 8 * day).observations(now: now) == [.overdue(since: 20 * day, usual: 8 * day)])
         #expect(metrics(lastLong: 9 * day, usualGap: 8 * day).observations(now: now).isEmpty)
     }
+
+    @Test func onlyReplyAndCadenceChangesAreActionable() {
+        #expect(!RelationshipMetrics.Observation.theyStartMost(share: 0.9).isActionable)
+        #expect(!RelationshipMetrics.Observation.youStartMost(share: 0.9).isActionable)
+        #expect(RelationshipMetrics.Observation.repliesSlowing(recent: 2, usual: 1).isActionable)
+        #expect(RelationshipMetrics.Observation.overdue(since: 2, usual: 1).isActionable)
+    }
 }

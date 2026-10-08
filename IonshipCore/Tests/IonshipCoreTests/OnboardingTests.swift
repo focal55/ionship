@@ -94,4 +94,50 @@ import Testing
         picker.filter = "mom"
         #expect(picker.visible.map(\.id) == [1])
     }
+
+    @Test func mergesOneToOneChatsForTheSameContact() {
+        var picker = ConversationPicker(chats: [
+            chat(1, 100, identifier: "+15550104471", participants: ["+15550104471"]),
+            chat(2, 50, identifier: "mom@example.com", participants: ["mom@example.com"]),
+            chat(3, 30, identifier: "+15550100002", participants: ["+15550100002"]),
+            chat(4, 20, identifier: "chat9", participants: ["+15550104471", "+15550100002"]),
+        ], preselect: 1)
+        picker.names = HandleDirectory(entries: [
+            .init(name: "Mom", phones: ["5550104471"], emails: ["mom@example.com"]),
+        ])
+        #expect(picker.visible.map(\.id) == [1, 3, 4])
+        let mom = picker.visible[0]
+        #expect(mom.chatIDs == [1, 2])
+        #expect(mom.messageCount == 150)
+        #expect(picker.title(for: mom) == "Mom")
+        #expect(picker.isSelected(mom))
+        #expect(picker.selectedMessageCount == 150)
+    }
+
+    @Test func togglingAMergedConversationCoversAllItsChats() {
+        var picker = ConversationPicker(chats: [
+            chat(1, 100, identifier: "+15550104471", participants: ["+15550104471"]),
+            chat(2, 50, identifier: "mom@example.com", participants: ["mom@example.com"]),
+        ], preselect: 0)
+        picker.names = HandleDirectory(entries: [.init(name: "Mom", phones: ["5550104471"], emails: ["mom@example.com"])])
+        picker.toggle(1)
+        #expect(picker.selected == [1, 2])
+        #expect(picker.selectedConversations.map(\.chatIDs) == [[1, 2]])
+        picker.toggle(1)
+        #expect(picker.selected.isEmpty)
+    }
+
+    @Test func differentContactsWithTheSameNameStaySeparate() {
+        var picker = ConversationPicker(chats: [
+            chat(1, 10, identifier: "+15550000001", participants: ["+15550000001"]),
+            chat(2, 5, identifier: "+15550000002", participants: ["+15550000002"]),
+            chat(3, 3, identifier: "+15559999999", participants: ["+15559999999"]),
+            chat(4, 2, identifier: "+15558888888", participants: ["+15558888888"]),
+        ])
+        picker.names = HandleDirectory(entries: [
+            .init(name: "Sam", phones: ["5550000001"], emails: []),
+            .init(name: "Sam", phones: ["5550000002"], emails: []),
+        ])
+        #expect(picker.visible.map(\.id) == [1, 2, 3, 4])
+    }
 }

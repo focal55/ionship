@@ -26,6 +26,14 @@ public struct RelationshipMetrics: Sendable, Equatable {
         case youStartMost(share: Double)
         case repliesSlowing(recent: TimeInterval, usual: TimeInterval)
         case overdue(since: TimeInterval, usual: TimeInterval)
+
+        /// Initiation imbalance is a standing trait of most relationships, not a change to act on.
+        public var isActionable: Bool {
+            switch self {
+            case .theyStartMost, .youStartMost: false
+            case .repliesSlowing, .overdue: true
+            }
+        }
     }
 
     /// Only deviations worth a sentence; a balanced relationship yields none.

@@ -36,4 +36,11 @@ import Testing
         ])
         #expect(directory.name(for: "+15550104471") == "Work Phone")
     }
+
+    @Test func phoneAndEmailOfOneContactShareAKey() {
+        #expect(directory.contactKey(for: "+15550104471") != nil)
+        #expect(directory.contactKey(for: "+15550104471") == directory.contactKey(for: "mom@example.com"))
+        #expect(directory.contactKey(for: "maya@example.com") != directory.contactKey(for: "mom@example.com"))
+        #expect(directory.contactKey(for: "+15559999999") == nil)
+    }
 }

@@ -14,19 +14,27 @@ public struct HandleDirectory: Sendable {
         }
     }
 
-    private var names: [String: String] = [:]
+    private var entryNames: [String] = []
+    private var entryIndex: [String: Int] = [:]
 
     public init(entries: [Entry] = []) {
-        for entry in entries {
-            for key in entry.phones.compactMap(Self.phoneKey) + entry.emails.compactMap(Self.emailKey) where names[key] == nil {
-                names[key] = entry.name
+        for (index, entry) in entries.enumerated() {
+            entryNames.append(entry.name)
+            for key in entry.phones.compactMap(Self.phoneKey) + entry.emails.compactMap(Self.emailKey) where entryIndex[key] == nil {
+                entryIndex[key] = index
             }
         }
     }
 
     public func name(for handle: String) -> String? {
+        contactKey(for: handle).map { entryNames[$0] }
+    }
+
+    /// Identifies the contact card a handle belongs to, so one person's phone and email
+    /// chats can be merged without conflating two contacts who share a name.
+    public func contactKey(for handle: String) -> Int? {
         let key = handle.contains("@") ? Self.emailKey(handle) : Self.phoneKey(handle)
-        return key.flatMap { names[$0] }
+        return key.flatMap { entryIndex[$0] }
     }
 
     // Contacts store numbers in whatever format the user typed; Messages uses E.164. Comparing
