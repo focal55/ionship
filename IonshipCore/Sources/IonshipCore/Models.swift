@@ -1,0 +1,57 @@
+import Foundation
+
+public struct Chat: Sendable, Equatable, Identifiable {
+    public let id: Int64
+    public let identifier: String
+    public let displayName: String?
+    public let isGroup: Bool
+    public let participants: [String]
+    public let messageCount: Int
+    public let lastMessageDate: Date?
+}
+
+public struct Message: Sendable, Equatable, Identifiable {
+    public enum Kind: Sendable, Equatable {
+        case text
+        case reaction
+        case attachmentOnly
+        case other
+    }
+
+    public enum TextSource: Sendable, Equatable {
+        case column
+        case attributedBody(AttributedBodyDecoder.Strategy)
+        case undecodable
+        case none
+    }
+
+    public let id: Int64
+    public let guid: String
+    public let chatID: Int64
+    /// The other party's handle (phone or email); nil when the user sent it.
+    public let sender: String?
+    public let isFromMe: Bool
+    public let date: Date
+    public let text: String?
+    public let textSource: TextSource
+    public let kind: Kind
+}
+
+public struct SchemaReport: Sendable, Equatable {
+    public let present: [String]
+    public let missing: [String]
+    public var isUsable: Bool { missing.isEmpty }
+}
+
+public enum MessagesStoreError: Error, Equatable {
+    case accessDenied(path: String)
+    case cannotOpen(path: String, reason: String)
+    case query(message: String)
+
+    static func classifyOpenFailure(path: String, code: Int32, message: String) -> MessagesStoreError {
+        let lowered = message.lowercased()
+        let denied = code == 23 /* SQLITE_AUTH */ || code == 3 /* SQLITE_PERM */
+            || ["authorization denied", "not authorized", "permission denied"].contains { lowered.contains($0) }
+        return denied ? .accessDenied(path: path) : .cannotOpen(path: path, reason: message)
+    }
+}
