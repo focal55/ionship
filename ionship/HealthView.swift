@@ -12,27 +12,23 @@ struct HealthView: View {
             sidebar
             Divider().overlay(Theme.hairline)
             if let person = people.first(where: { $0.id == selection }) ?? people.first {
-                PersonHealthDetail(person: person)
+                switch person.health {
+                case .person(let metrics): PersonHealthDetail(person: person, metrics: metrics)
+                case .group(let metrics): GroupHealthDetail(group: person, metrics: metrics)
+                }
             }
         }
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("RELATIONSHIPS")
-                .font(.system(size: 11, weight: .medium))
-                .tracking(0.9)
-                .foregroundStyle(Theme.muted)
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 8)
             ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(people) { person in
-                        sidebarRow(person, isSelected: person.id == (selection ?? people.first?.id))
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    section("PEOPLE", people.filter { !$0.conversation.isGroup })
+                    section("GROUPS", people.filter(\.conversation.isGroup))
                 }
                 .padding(.horizontal, 10)
+                .padding(.bottom, 12)
             }
             Divider().overlay(Theme.hairline)
             Button("Change conversations", action: onChangeConversations)
@@ -44,17 +40,32 @@ struct HealthView: View {
         .frame(width: 280)
     }
 
+    @ViewBuilder private func section(_ title: String, _ rows: [PersonHealth]) -> some View {
+        if !rows.isEmpty {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .tracking(0.9)
+                .foregroundStyle(Theme.muted)
+                .padding(.horizontal, 10)
+                .padding(.top, 20)
+                .padding(.bottom, 6)
+            ForEach(rows) { person in
+                sidebarRow(person, isSelected: person.id == (selection ?? people.first?.id))
+            }
+        }
+    }
+
     private func sidebarRow(_ person: PersonHealth, isSelected: Bool) -> some View {
         Button { selection = person.id } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(person.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
-                    Text("\(person.metrics.messageCount.formatted()) messages")
+                    Text("\(person.messageCount.formatted()) messages")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.muted)
                 }
                 Spacer()
-                if person.metrics.observations().contains(where: \.isActionable) {
+                if person.needsAttention {
                     Circle().fill(Theme.accent).frame(width: 7, height: 7)
                         .accessibilityLabel("Something changed")
                 }
@@ -71,7 +82,7 @@ struct HealthView: View {
 
 private struct PersonHealthDetail: View {
     let person: PersonHealth
-    private var metrics: RelationshipMetrics { person.metrics }
+    let metrics: RelationshipMetrics
 
     var body: some View {
         ScrollView {
@@ -135,7 +146,7 @@ private struct PersonHealthDetail: View {
     }
 }
 
-private struct Tile: View {
+struct Tile: View {
     let label: String
     let value: String
     let detail: String
@@ -153,8 +164,9 @@ private struct Tile: View {
     }
 }
 
-private struct VolumeChart: View {
+struct VolumeChart: View {
     let weeks: [RelationshipMetrics.Week]
+    var others = "Them"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -162,12 +174,12 @@ private struct VolumeChart: View {
             Chart {
                 ForEach(weeks, id: \.start) { week in
                     BarMark(x: .value("Week", week.start, unit: .weekOfYear), y: .value("Messages", week.theirs))
-                        .foregroundStyle(by: .value("From", "Them"))
+                        .foregroundStyle(by: .value("From", others))
                     BarMark(x: .value("Week", week.start, unit: .weekOfYear), y: .value("Messages", week.mine))
                         .foregroundStyle(by: .value("From", "You"))
                 }
             }
-            .chartForegroundStyleScale(["Them": Theme.accent, "You": Theme.ink])
+            .chartForegroundStyleScale([others: Theme.accent, "You": Theme.ink])
             .chartXAxis { AxisMarks(values: .stride(by: .month, count: 3)) { AxisValueLabel(format: .dateTime.month(.abbreviated)) } }
             .frame(height: 200)
         }
@@ -188,7 +200,7 @@ enum Elapsed {
     }
 
     static func ago(_ date: Date) -> String {
-        let days = Int(Date.now.timeIntervalSince(date) / 86_400)
+        let days = Int((Date.now.timeIntervalSince(date) / 86_400).rounded())
         return days == 0 ? "today" : "\(days)d ago"
     }
 }
@@ -219,7 +231,7 @@ private func samplePeople() -> [PersonHealth] {
         }
         let chat = Chat(id: id, identifier: title, displayName: title, isGroup: false, participants: [title],
                         messageCount: messages.count, lastMessageDate: messages.last?.date)
-        return PersonHealth(conversation: Conversation(chats: [chat]), title: title, metrics: RelationshipMetrics.compute(messages))
+        return PersonHealth(conversation: Conversation(chats: [chat]), title: title, health: .person(RelationshipMetrics.compute(messages)))
     }
-    return [person(1, "Mom", myReply: 900, iStartEvery: 5), person(2, "Maya Chen", myReply: 300, iStartEvery: 2)]
+    return [person(1, "Mom", myReply: 900, iStartEvery: 5), person(2, "Maya Chen", myReply: 300, iStartEvery: 2), sampleGroup()]
 }
