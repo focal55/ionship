@@ -108,4 +108,27 @@ struct WordEmbedder: Embedder {
         try index.add([moment(1, "Maya: what time is dinner sunday")], embedder: WordEmbedder())
         #expect(try index.search("zebra", embedder: WordEmbedder(), limit: 5).isEmpty)
     }
+
+    @Test func pruningKeepsOnlyTheChosenConversations() throws {
+        try index.add([moment(1, "a photos", conversation: 1), moment(2, "b photos", conversation: 2),
+                       moment(3, "c photos", conversation: 3)], embedder: WordEmbedder())
+        #expect(try index.prune(keeping: [2]) == 2)
+        #expect(try index.count() == 1)
+        #expect(try index.search("photos", embedder: WordEmbedder(), limit: 5).map(\.moment.conversationID) == [2])
+    }
+
+    @Test func deleteAllEmptiesTheIndex() throws {
+        try index.add([moment(1, "a photos"), moment(2, "b photos", conversation: 2)], embedder: WordEmbedder())
+        try index.deleteAll()
+        #expect(try index.count() == 0)
+        #expect(try index.search("photos", embedder: WordEmbedder(), limit: 5).isEmpty)
+    }
+
+    @Test func deletedTextDoesNotLingerInTheFile() throws {
+        let secret = "zebracorn-\(UUID().uuidString)" + String(repeating: " long message", count: 600)
+        try index.add([moment(1, "Maya: \(secret)", conversation: 1), moment(2, "keep photos", conversation: 2)], embedder: WordEmbedder())
+        try index.prune(keeping: [2])
+        let bytes = try Data(contentsOf: directory.appendingPathComponent("memory.sqlite"))
+        #expect(bytes.range(of: Data(secret.utf8)) == nil)
+    }
 }

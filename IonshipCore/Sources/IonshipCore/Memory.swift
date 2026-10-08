@@ -93,6 +93,8 @@ public final class MemoryIndex {
             throw MessagesStoreError.cannotOpen(path: path, reason: "could not open memory index")
         }
         db = handle
+        // Deleted moments hold message text; without this, long ones can survive in freed pages.
+        try execute("PRAGMA secure_delete = ON")
         try execute("""
             CREATE TABLE IF NOT EXISTS moment (
                 conversation_id INTEGER NOT NULL, first_message_id INTEGER NOT NULL, last_message_id INTEGER NOT NULL,
@@ -117,6 +119,19 @@ public final class MemoryIndex {
             throw error
         }
         cache = nil
+    }
+
+    /// Removes every moment from conversations not in `keeping`; returns how many were removed.
+    @discardableResult
+    public func prune(keeping conversationIDs: Set<Int64>) throws -> Int {
+        let list = conversationIDs.map(String.init).joined(separator: ",")
+        try execute("DELETE FROM moment WHERE conversation_id NOT IN (\(list))")
+        cache = nil
+        return Int(sqlite3_changes(db))
+    }
+
+    public func deleteAll() throws {
+        try prune(keeping: [])
     }
 
     public func indexedThrough(conversationID: Int64) throws -> Int64 {
