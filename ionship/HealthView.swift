@@ -3,18 +3,38 @@ import IonshipCore
 import SwiftUI
 
 struct HealthView: View {
+    enum Tab: String, CaseIterable {
+        case health = "Health"
+        case thread = "Thread"
+    }
+
     let people: [PersonHealth]
+    let loadThread: (Conversation) async -> [Message]
     let onChangeConversations: () -> Void
     @State private var selection: Int64?
+    @State private var tab = Tab.health
 
     var body: some View {
         HStack(spacing: 0) {
             sidebar
             Divider().overlay(Theme.hairline)
             if let person = people.first(where: { $0.id == selection }) ?? people.first {
-                switch person.health {
-                case .person(let metrics): PersonHealthDetail(person: person, metrics: metrics)
-                case .group(let metrics): GroupHealthDetail(group: person, metrics: metrics)
+                VStack(spacing: 0) {
+                    Picker("View", selection: $tab) {
+                        ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 200)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(Theme.surface)
+                    Divider().overlay(Theme.hairline)
+                    switch (tab, person.health) {
+                    case (.thread, _): ThreadView(person: person, load: loadThread)
+                    case (.health, .person(let metrics)): PersonHealthDetail(person: person, metrics: metrics)
+                    case (.health, .group(let metrics)): GroupHealthDetail(group: person, metrics: metrics)
+                    }
                 }
             }
         }
@@ -206,7 +226,7 @@ enum Elapsed {
 }
 
 #Preview {
-    HealthView(people: samplePeople()) {}
+    HealthView(people: samplePeople(), loadThread: { _ in [] }) {}
         .frame(width: 960, height: 760)
         .background(Theme.ground)
         .foregroundStyle(Theme.ink)

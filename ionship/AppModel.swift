@@ -83,6 +83,19 @@ final class AppModel {
         phase = .choose
     }
 
+    private var threads: [Int64: [Message]] = [:]
+
+    func thread(for conversation: Conversation) async -> [Message] {
+        if let cached = threads[conversation.id] { return cached }
+        let chatIDs = conversation.chatIDs
+        let messages = (try? await Task.detached { () throws -> [Message] in
+            let store = try MessagesStore()
+            return try chatIDs.flatMap { try store.messages(chatID: $0, limit: .max) }.sorted { $0.date < $1.date }
+        }.value) ?? []
+        threads[conversation.id] = messages
+        return messages
+    }
+
     private func loadChats() async {
         phase = .loading
         do {

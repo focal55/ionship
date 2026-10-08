@@ -44,7 +44,7 @@ struct RootView: View {
                 Text("Reading \(model.picker.selectedMessageCount.formatted()) messages…").foregroundStyle(Theme.secondary)
             }
         case .health:
-            HealthView(people: model.people, onChangeConversations: model.changeConversations)
+            HealthView(people: model.people, loadThread: model.thread(for:), onChangeConversations: model.changeConversations)
         case .failed(let message):
             Text(message).foregroundStyle(Theme.secondary).padding()
         }
