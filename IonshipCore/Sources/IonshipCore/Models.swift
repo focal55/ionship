@@ -8,6 +8,17 @@ public struct Chat: Sendable, Equatable, Identifiable {
     public let participants: [String]
     public let messageCount: Int
     public let lastMessageDate: Date?
+
+    public init(id: Int64, identifier: String, displayName: String?, isGroup: Bool, participants: [String],
+                messageCount: Int, lastMessageDate: Date?) {
+        self.id = id
+        self.identifier = identifier
+        self.displayName = displayName
+        self.isGroup = isGroup
+        self.participants = participants
+        self.messageCount = messageCount
+        self.lastMessageDate = lastMessageDate
+    }
 }
 
 public struct Message: Sendable, Equatable, Identifiable {
