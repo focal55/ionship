@@ -32,6 +32,7 @@ private func o(_ id: Int64, me: Bool, _ text: String?, daysAgo: Double, kind: Me
         "Will you send me the photos?",
         "ok",
         "I'll be there in 5",
+        "Let me know if you need anything",
         "Ill",
         "That was so fun, thanks again",
     ])
