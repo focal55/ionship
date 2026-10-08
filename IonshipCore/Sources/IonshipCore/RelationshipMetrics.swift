@@ -57,16 +57,8 @@ public struct RelationshipMetrics: Sendable, Equatable {
         _ messages: [Message], now: Date = .now,
         sessionGap: TimeInterval = 6 * 3600, longConversationLength: Int = 20
     ) -> RelationshipMetrics {
-        let spoken = messages.filter { $0.kind == .text || $0.kind == .attachmentOnly }.sorted { $0.date < $1.date }
-
-        var sessions: [[Message]] = []
-        for message in spoken {
-            if let last = sessions.last?.last, message.date.timeIntervalSince(last.date) < sessionGap {
-                sessions[sessions.count - 1].append(message)
-            } else {
-                sessions.append([message])
-            }
-        }
+        let spoken = spokenMessages(messages)
+        let sessions = sessions(of: spoken, gap: sessionGap)
 
         var yourReplies: [(at: Date, delay: TimeInterval)] = []
         var theirReplies: [TimeInterval] = []
@@ -94,7 +86,23 @@ public struct RelationshipMetrics: Sendable, Equatable {
         )
     }
 
-    private static func weeklyVolume(_ messages: [Message], now: Date) -> [Week] {
+    static func spokenMessages(_ messages: [Message]) -> [Message] {
+        messages.filter { $0.kind == .text || $0.kind == .attachmentOnly }.sorted { $0.date < $1.date }
+    }
+
+    static func sessions(of spoken: [Message], gap: TimeInterval) -> [[Message]] {
+        var sessions: [[Message]] = []
+        for message in spoken {
+            if let last = sessions.last?.last, message.date.timeIntervalSince(last.date) < gap {
+                sessions[sessions.count - 1].append(message)
+            } else {
+                sessions.append([message])
+            }
+        }
+        return sessions
+    }
+
+    static func weeklyVolume(_ messages: [Message], now: Date) -> [Week] {
         let week: TimeInterval = 7 * 86_400
         var mine = Array(repeating: 0, count: 52)
         var theirs = Array(repeating: 0, count: 52)
@@ -108,7 +116,7 @@ public struct RelationshipMetrics: Sendable, Equatable {
         return (0..<52).map { Week(start: now.addingTimeInterval(-Double(52 - $0) * week), mine: mine[$0], theirs: theirs[$0]) }
     }
 
-    private static func median(_ values: [TimeInterval]) -> TimeInterval? {
+    static func median(_ values: [TimeInterval]) -> TimeInterval? {
         guard !values.isEmpty else { return nil }
         let sorted = values.sorted()
         let mid = sorted.count / 2
