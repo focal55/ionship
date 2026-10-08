@@ -85,7 +85,9 @@ public final class MemoryIndex {
     private let db: OpaquePointer
     private var cache: [(moment: Moment, vector: [Float]?, lowered: String)]?
 
-    public init(path: String) throws {
+    /// `embedderID` names the model behind stored vectors; opening with a different one clears
+    /// the index so vectors from two models are never compared.
+    public init(path: String, embedderID: String = "default") throws {
         try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         var handle: OpaquePointer?
         guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK, let handle else {
@@ -101,6 +103,13 @@ public final class MemoryIndex {
                 start REAL NOT NULL, end REAL NOT NULL, text TEXT NOT NULL, vector BLOB,
                 PRIMARY KEY (conversation_id, first_message_id))
             """)
+        try execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        var stored: String?
+        try query("SELECT value FROM meta WHERE key = 'embedder'") { stored = String(cString: sqlite3_column_text($0, 0)) }
+        if stored != embedderID {
+            if stored != nil { try execute("DELETE FROM moment") }
+            try query("INSERT OR REPLACE INTO meta VALUES ('embedder', ?)", bind: [.text(embedderID)]) { _ in }
+        }
     }
 
     deinit {

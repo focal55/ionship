@@ -10,8 +10,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "ObjCExceptionCatcher"),
-        .target(name: "IonshipCore", dependencies: ["ObjCExceptionCatcher"]),
+        .target(name: "IonshipCore", dependencies: ["ObjCExceptionCatcher"], resources: [.copy("Resources/vocab.txt")]),
         .executableTarget(name: "IonshipProbe", dependencies: ["IonshipCore"]),
-        .testTarget(name: "IonshipCoreTests", dependencies: ["IonshipCore"]),
+        .testTarget(name: "IonshipCoreTests", dependencies: ["IonshipCore"], resources: [.copy("Resources/tokenizer-golden.json")]),
     ]
 )
