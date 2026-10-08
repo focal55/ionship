@@ -124,4 +124,15 @@ import Testing
     func accessDeniedIsRecognized(code: Int32, message: String) {
         #expect(MessagesStoreError.classifyOpenFailure(path: "p", code: code, message: message) == .accessDenied(path: "p"))
     }
+
+    @Test func latestRowIDTracksNewMessages() throws {
+        #expect(try store.latestRowID() == 9)
+        try fixture.insertMessage(rowID: 10, chatID: 1, text: "new", handleID: 1, date: ns(10_000))
+        #expect(try store.latestRowID() == 10)
+    }
+
+    @Test func latestRowIDOfEmptyDatabaseIsZero() throws {
+        let empty = try Fixture(seed: false)
+        #expect(try MessagesStore(path: empty.path).latestRowID() == 0)
+    }
 }

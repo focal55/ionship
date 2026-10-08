@@ -105,6 +105,12 @@ public final class MessagesStore {
         return messages
     }
 
+    public func latestRowID() throws -> Int64 {
+        var latest: Int64 = 0
+        try query("SELECT COALESCE(MAX(ROWID), 0) FROM message") { latest = $0.int(0) }
+        return latest
+    }
+
     public func schemaReport() throws -> SchemaReport {
         var present: [String] = []
         var missing: [String] = []
