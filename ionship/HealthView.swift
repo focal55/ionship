@@ -9,7 +9,7 @@ struct HealthView: View {
     }
 
     let people: [PersonHealth]
-    let loadThread: (Conversation) async -> [Message]
+    let threads: [Int64: [Message]]
     let loadOpenLoops: (PersonHealth) async -> OpenLoops
     let onChangeConversations: () -> Void
     @State private var selection: Int64?
@@ -32,7 +32,7 @@ struct HealthView: View {
                     .background(Theme.surface)
                     Divider().overlay(Theme.hairline)
                     switch (tab, person.health) {
-                    case (.thread, _): ThreadView(person: person, load: loadThread)
+                    case (.thread, _): ThreadView(person: person, messages: threads[person.id] ?? [])
                     case (.health, .person(let metrics)): PersonHealthDetail(person: person, metrics: metrics, loadOpenLoops: loadOpenLoops)
                     case (.health, .group(let metrics)): GroupHealthDetail(group: person, metrics: metrics)
                     }
@@ -229,7 +229,7 @@ enum Elapsed {
 }
 
 #Preview {
-    HealthView(people: samplePeople(), loadThread: { _ in [] }, loadOpenLoops: { _ in
+    HealthView(people: samplePeople(), threads: [:], loadOpenLoops: { _ in
         .judged([OpenLoop(id: 1, task: "Send the Big Sur photos", date: .now.addingTimeInterval(-9 * 86_400), isConfirmed: true),
                  OpenLoop(id: 2, task: "Ask how the interview went", date: .now.addingTimeInterval(-3 * 86_400), isConfirmed: false)])
     }) {}

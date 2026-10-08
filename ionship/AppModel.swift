@@ -10,7 +10,7 @@ struct PersonHealth: Identifiable, Equatable {
 
     let conversation: Conversation
     let title: String
-    let health: Health
+    var health: Health
     /// Group members' handles to contact names.
     var memberNames: [String: String] = [:]
     var id: Int64 { conversation.id }
@@ -33,6 +33,12 @@ struct PersonHealth: Identifiable, Equatable {
                 }
             }
         }
+    }
+
+    nonisolated static func health(for conversation: Conversation, messages: [Message]) -> Health {
+        conversation.isGroup
+            ? .group(GroupMetrics.compute(messages, participants: conversation.participants))
+            : .person(RelationshipMetrics.compute(messages))
     }
 
     func memberName(_ handle: String?) -> String {
@@ -80,31 +86,24 @@ final class AppModel {
     }
 
     func changeConversations() {
+        syncing?.cancel()
         phase = .choose
     }
 
-    private var threads: [Int64: [Message]] = [:]
+    /// Every message of every chosen conversation, oldest first, kept current by live sync.
+    private(set) var threads: [Int64: [Message]] = [:]
     private var loops: [Int64: OpenLoops] = [:]
+    private var cursor: Int64 = 0
+    private var syncing: Task<Void, Never>?
 
     func openLoops(for person: PersonHealth) async -> OpenLoops {
         if let cached = loops[person.id] { return cached }
-        let candidates = OpenLoopCandidate.find(in: await thread(for: person.conversation))
+        let candidates = OpenLoopCandidate.find(in: threads[person.id] ?? [])
         let result = await OpenLoopJudge.evaluate(candidates, name: { handle in
             handle.map { person.memberNames[$0] ?? person.title } ?? "You"
         })
         loops[person.id] = result
         return result
-    }
-
-    func thread(for conversation: Conversation) async -> [Message] {
-        if let cached = threads[conversation.id] { return cached }
-        let chatIDs = conversation.chatIDs
-        let messages = (try? await Task.detached { () throws -> [Message] in
-            let store = try MessagesStore()
-            return try chatIDs.flatMap { try store.messages(chatID: $0, limit: .max) }.sorted { $0.date < $1.date }
-        }.value) ?? []
-        threads[conversation.id] = messages
-        return messages
     }
 
     private func loadChats() async {
@@ -125,18 +124,25 @@ final class AppModel {
     }
 
     private func analyze() async {
+        syncing?.cancel()
         phase = .analyzing
         let conversations = picker.selectedConversations
         do {
-            let health = try await Task.detached {
+            let (latest, loaded) = try await Task.detached { () throws -> (Int64, [[Message]]) in
                 let store = try MessagesStore()
-                return try conversations.map { conversation -> PersonHealth.Health in
-                    let messages = try conversation.chatIDs.flatMap { try store.messages(chatID: $0, limit: .max) }
-                    return conversation.isGroup
-                        ? .group(GroupMetrics.compute(messages, participants: conversation.participants))
-                        : .person(RelationshipMetrics.compute(messages))
+                // Read the cursor first: anything arriving mid-load is fetched again by sync and deduplicated.
+                let latest = try store.latestRowID()
+                let threads = try conversations.map { conversation in
+                    try conversation.chatIDs.flatMap { try store.messages(chatID: $0, limit: .max) }.sorted { $0.date < $1.date }
                 }
+                return (latest, threads)
             }.value
+            let health = await Task.detached {
+                zip(conversations, loaded).map { PersonHealth.health(for: $0, messages: $1) }
+            }.value
+            cursor = latest
+            loops = [:]
+            threads = Dictionary(uniqueKeysWithValues: zip(conversations.map(\.id), loaded))
             let names = picker.names
             people = zip(conversations, health)
                 .map { conversation, health in
@@ -148,8 +154,40 @@ final class AppModel {
                 }
                 .sorted { $0.messageCount > $1.messageCount }
             phase = .health
+            startSyncing()
         } catch {
             phase = .failed(String(describing: error))
+        }
+    }
+
+    private func startSyncing() {
+        syncing = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                await syncOnce()
+            }
+        }
+    }
+
+    private func syncOnce() async {
+        let after = cursor
+        guard let fresh = try? await Task.detached(operation: { () throws -> [Message]? in
+            let store = try MessagesStore()
+            guard try store.latestRowID() > after else { return nil }
+            return try store.newMessages(after: after)
+        }).value, let newest = fresh.last?.id else { return }
+        cursor = newest
+
+        for (id, arrived) in LiveSync.route(fresh, to: people.map(\.conversation)) {
+            guard let conversation = people.first(where: { $0.id == id })?.conversation else { continue }
+            let existing = threads[id] ?? []
+            let known = Set(existing.suffix(500).map(\.id))
+            let merged = (existing + arrived.filter { !known.contains($0.id) }).sorted { $0.date < $1.date }
+            let health = await Task.detached { PersonHealth.health(for: conversation, messages: merged) }.value
+            guard !Task.isCancelled, let index = people.firstIndex(where: { $0.id == id }) else { return }
+            threads[id] = merged
+            people[index].health = health
+            loops[id] = nil
         }
     }
 }

@@ -3,27 +3,16 @@ import SwiftUI
 
 struct ThreadView: View {
     let person: PersonHealth
-    let load: (Conversation) async -> [Message]
+    let messages: [Message]
 
-    @State private var messages: [Message]?
     @State private var window = 400
 
     private static let dayFormat = Date.FormatStyle().weekday(.abbreviated).month(.abbreviated).day()
 
     var body: some View {
-        Group {
-            if let messages {
-                thread(messages)
-            } else {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .background(Theme.surface)
-        .task(id: person.id) {
-            messages = nil
-            window = 400
-            messages = await load(person.conversation)
-        }
+        thread(messages)
+            .background(Theme.surface)
+            .onChange(of: person.id) { window = 400 }
     }
 
     private func thread(_ messages: [Message]) -> some View {
@@ -96,14 +85,14 @@ private struct Bubble: View {
 
 #Preview {
     let person = sampleGroup()
-    ThreadView(person: person) { _ in
+    ThreadView(person: person, messages: {
         let senders: [String?] = ["+15550000001", "+15550000001", nil, "+15550000002", nil, "+15550000001"]
         let lines = ["Saturday at Brooklyn Boulders?", "I can drive", "In. 9am?", "9 is early lol", "Fine, 10", "10 works"]
         return zip(senders, lines).enumerated().map { index, pair in
             Message(id: Int64(index), guid: "\(index)", chatID: 50, sender: pair.0, isFromMe: pair.0 == nil,
                     date: .now.addingTimeInterval(Double(index - 6) * 900), text: pair.1, textSource: .column, kind: .text)
         }
-    }
+    }())
     .frame(width: 800, height: 600)
     .preferredColorScheme(.light)
 }
