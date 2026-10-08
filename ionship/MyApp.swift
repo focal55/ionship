@@ -1,3 +1,4 @@
+import IonshipCore
 import SwiftUI
 
 @main struct IonshipApp: App {
@@ -37,11 +38,13 @@ struct RootView: View {
             ConnectView(access: access)
         case .choose:
             ChooseView(picker: $model.picker, onImport: model.importSelected)
-        case .imported(let conversations, let messages):
-            VStack(spacing: 8) {
-                Text("\(conversations) conversations · \(messages.formatted()) messages").font(.system(size: 22, weight: .semibold))
-                Text("Indexing and relationship health come next.").foregroundStyle(Theme.secondary)
+        case .analyzing:
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("Reading \(model.picker.selectedMessageCount.formatted()) messages…").foregroundStyle(Theme.secondary)
             }
+        case .health:
+            HealthView(people: model.people, onChangeConversations: model.changeConversations)
         case .failed(let message):
             Text(message).foregroundStyle(Theme.secondary).padding()
         }

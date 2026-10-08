@@ -61,6 +61,12 @@ import Testing
         #expect(picker.selected == [3])
     }
 
+    @Test func restoringASavedSelectionDropsChatsThatNoLongerExist() {
+        var picker = ConversationPicker(chats: [chat(1, 100), chat(2, 50), chat(3, 0)])
+        picker.restore(selection: [2, 3, 99])
+        #expect(picker.selected == [2])
+    }
+
     @Test func titlePrefersDisplayNameThenSingleParticipant() {
         let picker = ConversationPicker(chats: [])
         #expect(picker.title(for: chat(1, 1, name: "Fam", participants: ["x", "y"])) == "Fam")

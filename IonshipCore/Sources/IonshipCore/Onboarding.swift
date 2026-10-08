@@ -43,6 +43,14 @@ public struct ConversationPicker: Sendable {
         all.filter { selected.contains($0.id) }.reduce(0) { $0 + $1.messageCount }
     }
 
+    public mutating func restore(selection: Set<Int64>) {
+        selected = selection.intersection(all.map(\.id))
+    }
+
+    public var selectedChats: [Chat] {
+        all.filter { selected.contains($0.id) }
+    }
+
     public mutating func toggle(_ id: Int64) {
         if selected.remove(id) == nil { selected.insert(id) }
     }

@@ -46,6 +46,19 @@ public struct Message: Sendable, Equatable, Identifiable {
     public let text: String?
     public let textSource: TextSource
     public let kind: Kind
+
+    public init(id: Int64, guid: String, chatID: Int64, sender: String?, isFromMe: Bool, date: Date,
+                text: String?, textSource: TextSource, kind: Kind) {
+        self.id = id
+        self.guid = guid
+        self.chatID = chatID
+        self.sender = sender
+        self.isFromMe = isFromMe
+        self.date = date
+        self.text = text
+        self.textSource = textSource
+        self.kind = kind
+    }
 }
 
 public struct SchemaReport: Sendable, Equatable {

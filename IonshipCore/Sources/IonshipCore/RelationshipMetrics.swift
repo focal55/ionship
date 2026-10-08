@@ -21,6 +21,30 @@ public struct RelationshipMetrics: Sendable, Equatable {
 
     public static let recentWindow: TimeInterval = 90 * 86_400
 
+    public enum Observation: Sendable, Hashable {
+        case theyStartMost(share: Double)
+        case youStartMost(share: Double)
+        case repliesSlowing(recent: TimeInterval, usual: TimeInterval)
+        case overdue(since: TimeInterval, usual: TimeInterval)
+    }
+
+    /// Only deviations worth a sentence; a balanced relationship yields none.
+    public func observations(now: Date = .now) -> [Observation] {
+        var result: [Observation] = []
+        if let share = youStartShare {
+            if share < 0.3 { result.append(.theyStartMost(share: 1 - share)) }
+            if share > 0.7 { result.append(.youStartMost(share: share)) }
+        }
+        if let recent = yourRecentMedianReply, let usual = yourMedianReply, recent > usual * 1.5 {
+            result.append(.repliesSlowing(recent: recent, usual: usual))
+        }
+        if let last = lastLongConversation, let usual = usualGapBetweenLongConversations {
+            let since = now.timeIntervalSince(last)
+            if since > usual * 1.5 { result.append(.overdue(since: since, usual: usual)) }
+        }
+        return result
+    }
+
     public static func compute(
         _ messages: [Message], now: Date = .now,
         sessionGap: TimeInterval = 6 * 3600, longConversationLength: Int = 20
