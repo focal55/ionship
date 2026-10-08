@@ -14,6 +14,7 @@ struct HealthView: View {
     let indexingProgress: Double?
     @Binding var memoryEnabled: Bool
     let search: (String) async -> [MemoryResult]
+    var draft: ((PersonHealth, String) async -> DraftResult)?
     let onChangeConversations: () -> Void
     @State private var selection: Int64?
     @State private var tab = Tab.health
@@ -46,7 +47,7 @@ struct HealthView: View {
                     .background(Theme.surface)
                     Divider().overlay(Theme.hairline)
                     switch (tab, person.health) {
-                    case (.thread, _): ThreadView(person: person, messages: threads[person.id] ?? [], focus: focus)
+                    case (.thread, _): ThreadView(person: person, messages: threads[person.id] ?? [], focus: focus, draft: draft)
                     case (.health, .person(let metrics)): PersonHealthDetail(person: person, metrics: metrics, loadOpenLoops: loadOpenLoops)
                     case (.health, .group(let metrics)): GroupHealthDetail(group: person, metrics: metrics, loadOpenLoops: loadOpenLoops)
                     }

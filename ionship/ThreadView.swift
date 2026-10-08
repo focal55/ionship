@@ -5,23 +5,34 @@ struct ThreadView: View {
     let person: PersonHealth
     let messages: [Message]
     var focus: Int64?
+    var draft: ((PersonHealth, String) async -> DraftResult)?
 
     @State private var window = 400
 
     private static let dayFormat = Date.FormatStyle().weekday(.abbreviated).month(.abbreviated).day()
 
     var body: some View {
-        ScrollViewReader { proxy in
-            thread(messages)
-                .background(Theme.surface)
-                .onChange(of: person.id) { window = 400 }
-                .task(id: focus) {
-                    guard let focus, let index = messages.firstIndex(where: { $0.id == focus }) else { return }
-                    window = max(window, messages.count - index + 20)
-                    try? await Task.sleep(for: .milliseconds(100))
-                    proxy.scrollTo("msg-\(focus)", anchor: .center)
-                }
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                threadScroller(proxy)
+            }
+            if let draft {
+                Divider().overlay(Theme.hairline)
+                DraftPanel(person: person, draft: draft)
+            }
         }
+    }
+
+    private func threadScroller(_ proxy: ScrollViewProxy) -> some View {
+        thread(messages)
+            .background(Theme.surface)
+            .onChange(of: person.id) { window = 400 }
+            .task(id: focus) {
+                guard let focus, let index = messages.firstIndex(where: { $0.id == focus }) else { return }
+                window = max(window, messages.count - index + 20)
+                try? await Task.sleep(for: .milliseconds(100))
+                proxy.scrollTo("msg-\(focus)", anchor: .center)
+            }
     }
 
     private func thread(_ messages: [Message]) -> some View {
