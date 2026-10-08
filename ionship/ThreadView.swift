@@ -4,15 +4,24 @@ import SwiftUI
 struct ThreadView: View {
     let person: PersonHealth
     let messages: [Message]
+    var focus: Int64?
 
     @State private var window = 400
 
     private static let dayFormat = Date.FormatStyle().weekday(.abbreviated).month(.abbreviated).day()
 
     var body: some View {
-        thread(messages)
-            .background(Theme.surface)
-            .onChange(of: person.id) { window = 400 }
+        ScrollViewReader { proxy in
+            thread(messages)
+                .background(Theme.surface)
+                .onChange(of: person.id) { window = 400 }
+                .task(id: focus) {
+                    guard let focus, let index = messages.firstIndex(where: { $0.id == focus }) else { return }
+                    window = max(window, messages.count - index + 20)
+                    try? await Task.sleep(for: .milliseconds(100))
+                    proxy.scrollTo("msg-\(focus)", anchor: .center)
+                }
+        }
     }
 
     private func thread(_ messages: [Message]) -> some View {
@@ -37,7 +46,9 @@ struct ThreadView: View {
                             .padding(.bottom, 6)
                     case .message:
                         if let message = item.message {
-                            Bubble(message: message, sender: item.showsSender ? person.memberName(message.sender) : nil)
+                            Bubble(message: message, sender: item.showsSender ? person.memberName(message.sender) : nil,
+                                   isFocused: message.id == focus)
+                                .id(item.id)
                         }
                     }
                 }
@@ -54,6 +65,7 @@ struct ThreadView: View {
 private struct Bubble: View {
     let message: Message
     let sender: String?
+    var isFocused = false
 
     var body: some View {
         VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 3) {
@@ -67,6 +79,7 @@ private struct Bubble: View {
                 .foregroundStyle(message.isFromMe ? .white : Theme.ink)
                 .background(message.isFromMe ? Theme.ink : Color(red: 0.949, green: 0.949, blue: 0.937),
                             in: .rect(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Theme.accent, lineWidth: isFocused ? 2 : 0).padding(-3))
                 .textSelection(.enabled)
                 .help(message.date.formatted(date: .abbreviated, time: .shortened))
         }

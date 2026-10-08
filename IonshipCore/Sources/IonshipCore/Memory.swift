@@ -17,6 +17,15 @@ public struct Moment: Sendable, Equatable, Identifiable {
     public let text: String
     public var id: String { "\(conversationID)-\(firstMessageID)" }
 
+    public init(conversationID: Int64, firstMessageID: Int64, lastMessageID: Int64, start: Date, end: Date, text: String) {
+        self.conversationID = conversationID
+        self.firstMessageID = firstMessageID
+        self.lastMessageID = lastMessageID
+        self.start = start
+        self.end = end
+        self.text = text
+    }
+
     /// Only sessions that have been quiet for `gap` before `closedBefore` are split, so a
     /// moment never changes after it is indexed.
     public static func split(

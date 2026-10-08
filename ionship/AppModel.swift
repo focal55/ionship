@@ -46,6 +46,12 @@ struct PersonHealth: Identifiable, Equatable {
     }
 }
 
+struct MemoryResult: Identifiable, Equatable {
+    let moment: Moment
+    let title: String
+    var id: String { moment.id }
+}
+
 @MainActor @Observable
 final class AppModel {
     enum Phase: Equatable {
@@ -87,6 +93,7 @@ final class AppModel {
 
     func changeConversations() {
         syncing?.cancel()
+        indexing?.cancel()
         phase = .choose
     }
 
@@ -95,6 +102,54 @@ final class AppModel {
     private var loops: [Int64: OpenLoops] = [:]
     private var cursor: Int64 = 0
     private var syncing: Task<Void, Never>?
+    /// Fraction of chosen conversations indexed into memory; nil when idle.
+    private(set) var indexingProgress: Double?
+    private var indexing: Task<Void, Never>?
+
+    nonisolated private static var memoryPath: String {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return support.appendingPathComponent("Ionship/memory.sqlite").path
+    }
+
+    func searchMemory(_ text: String) async -> [MemoryResult] {
+        let titles = Dictionary(uniqueKeysWithValues: people.map { ($0.id, $0.title) })
+        let hits = await Task.detached { () -> [MemoryIndex.Hit] in
+            guard let embedder = ContextualEmbedder(), let index = try? MemoryIndex(path: Self.memoryPath) else { return [] }
+            return (try? index.search(text, embedder: embedder, limit: 30)) ?? []
+        }.value
+        return hits.compactMap { hit in
+            titles[hit.moment.conversationID].map { MemoryResult(moment: hit.moment, title: $0) }
+        }
+    }
+
+    /// Adds closed sessions not yet in memory. Safe to call repeatedly: each conversation
+    /// resumes after the last message already indexed.
+    private func updateMemory(for targets: [PersonHealth]) {
+        let previous = indexing
+        let jobs = targets.map { person in
+            (person.id, threads[person.id] ?? [], person.title, person.memberNames)
+        }
+        indexing = Task {
+            await previous?.value
+            for (offset, job) in jobs.enumerated() {
+                guard !Task.isCancelled else { return }
+                if jobs.count > 1 { indexingProgress = Double(offset) / Double(jobs.count) }
+                let (id, messages, title, memberNames) = job
+                await Task.detached(priority: .utility) {
+                    guard let embedder = ContextualEmbedder(), let index = try? MemoryIndex(path: Self.memoryPath),
+                          let through = try? index.indexedThrough(conversationID: id) else { return }
+                    let pending = messages.filter { $0.id > through }
+                    let moments = Moment.split(pending, conversationID: id) { handle in
+                        handle.map { memberNames[$0] ?? title } ?? "You"
+                    }
+                    for batch in stride(from: 0, to: moments.count, by: 200) {
+                        try? index.add(Array(moments[batch..<min(batch + 200, moments.count)]), embedder: embedder)
+                    }
+                }.value
+            }
+            indexingProgress = nil
+        }
+    }
 
     func openLoops(for person: PersonHealth) async -> OpenLoops {
         if let cached = loops[person.id] { return cached }
@@ -155,6 +210,7 @@ final class AppModel {
                 .sorted { $0.messageCount > $1.messageCount }
             phase = .health
             startSyncing()
+            updateMemory(for: people)
         } catch {
             phase = .failed(String(describing: error))
         }
@@ -188,6 +244,7 @@ final class AppModel {
             threads[id] = merged
             people[index].health = health
             loops[id] = nil
+            updateMemory(for: [people[index]])
         }
     }
 }

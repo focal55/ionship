@@ -11,15 +11,27 @@ struct HealthView: View {
     let people: [PersonHealth]
     let threads: [Int64: [Message]]
     let loadOpenLoops: (PersonHealth) async -> OpenLoops
+    let indexingProgress: Double?
+    let search: (String) async -> [MemoryResult]
     let onChangeConversations: () -> Void
     @State private var selection: Int64?
     @State private var tab = Tab.health
+    @State private var query = ""
+    @State private var results: [MemoryResult]?
+    @State private var focus: Int64?
 
     var body: some View {
         HStack(spacing: 0) {
             sidebar
             Divider().overlay(Theme.hairline)
-            if let person = people.first(where: { $0.id == selection }) ?? people.first {
+            if let results {
+                MemoryResultsView(query: query, results: results) { result in
+                    selection = result.moment.conversationID
+                    focus = result.moment.firstMessageID
+                    tab = .thread
+                    self.results = nil
+                }
+            } else if let person = people.first(where: { $0.id == selection }) ?? people.first {
                 VStack(spacing: 0) {
                     Picker("View", selection: $tab) {
                         ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
@@ -32,7 +44,7 @@ struct HealthView: View {
                     .background(Theme.surface)
                     Divider().overlay(Theme.hairline)
                     switch (tab, person.health) {
-                    case (.thread, _): ThreadView(person: person, messages: threads[person.id] ?? [])
+                    case (.thread, _): ThreadView(person: person, messages: threads[person.id] ?? [], focus: focus)
                     case (.health, .person(let metrics)): PersonHealthDetail(person: person, metrics: metrics, loadOpenLoops: loadOpenLoops)
                     case (.health, .group(let metrics)): GroupHealthDetail(group: person, metrics: metrics)
                     }
@@ -43,6 +55,16 @@ struct HealthView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
+            TextField("Search memory", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .onSubmit {
+                    let text = query.trimmingCharacters(in: .whitespaces)
+                    guard !text.isEmpty else { results = nil; return }
+                    Task { results = await search(text) }
+                }
+                .onChange(of: query) { if query.isEmpty { results = nil } }
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     section("PEOPLE", people.filter { !$0.conversation.isGroup })
@@ -52,6 +74,14 @@ struct HealthView: View {
                 .padding(.bottom, 12)
             }
             Divider().overlay(Theme.hairline)
+            if let indexingProgress {
+                HStack(spacing: 8) {
+                    ProgressView(value: indexingProgress).frame(width: 60)
+                    Text("Building memory on this Mac").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
             Button("Change conversations", action: onChangeConversations)
                 .buttonStyle(.plain)
                 .font(.system(size: 13))
@@ -77,7 +107,7 @@ struct HealthView: View {
     }
 
     private func sidebarRow(_ person: PersonHealth, isSelected: Bool) -> some View {
-        Button { selection = person.id } label: {
+        Button { selection = person.id; focus = nil; results = nil } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(person.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
@@ -232,7 +262,7 @@ enum Elapsed {
     HealthView(people: samplePeople(), threads: [:], loadOpenLoops: { _ in
         .judged([OpenLoop(id: 1, task: "Send the Big Sur photos", date: .now.addingTimeInterval(-9 * 86_400), isConfirmed: true),
                  OpenLoop(id: 2, task: "Ask how the interview went", date: .now.addingTimeInterval(-3 * 86_400), isConfirmed: false)])
-    }) {}
+    }, indexingProgress: 0.4, search: { _ in [] }) {}
         .frame(width: 960, height: 760)
         .background(Theme.ground)
         .foregroundStyle(Theme.ink)
