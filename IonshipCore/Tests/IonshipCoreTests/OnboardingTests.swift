@@ -62,8 +62,30 @@ import Testing
     }
 
     @Test func titlePrefersDisplayNameThenSingleParticipant() {
-        #expect(ConversationPicker.title(for: chat(1, 1, name: "Fam", participants: ["x", "y"])) == "Fam")
-        #expect(ConversationPicker.title(for: chat(2, 1, identifier: "id", participants: ["maya@example.com"])) == "maya@example.com")
-        #expect(ConversationPicker.title(for: chat(3, 1, identifier: "chat9", participants: ["a", "b", "c"])) == "a, b +1")
+        let picker = ConversationPicker(chats: [])
+        #expect(picker.title(for: chat(1, 1, name: "Fam", participants: ["x", "y"])) == "Fam")
+        #expect(picker.title(for: chat(2, 1, identifier: "id", participants: ["maya@example.com"])) == "maya@example.com")
+        #expect(picker.title(for: chat(3, 1, identifier: "chat9", participants: ["a", "b", "c"])) == "a, b +1")
+    }
+
+    @Test func titlesUseContactNames() {
+        var picker = ConversationPicker(chats: [])
+        picker.names = HandleDirectory(entries: [
+            .init(name: "Mom", phones: ["5550104471"], emails: []),
+            .init(name: "Dad", phones: ["5550100002"], emails: []),
+        ])
+        #expect(picker.title(for: chat(1, 1, identifier: "+15550104471", participants: ["+15550104471"])) == "Mom")
+        #expect(picker.title(for: chat(2, 1, participants: ["+15550104471", "+15550100002", "+15559990000"])) == "Mom, Dad +1")
+        #expect(picker.title(for: chat(3, 1, name: "Fam", participants: ["+15550104471", "+15550100002"])) == "Fam")
+    }
+
+    @Test func filterMatchesContactNames() {
+        var picker = ConversationPicker(chats: [
+            chat(1, 5, identifier: "+15550104471", participants: ["+15550104471"]),
+            chat(2, 5, identifier: "+15550100002", participants: ["+15550100002"]),
+        ])
+        picker.names = HandleDirectory(entries: [.init(name: "Mom", phones: ["5550104471"], emails: [])])
+        picker.filter = "mom"
+        #expect(picker.visible.map(\.id) == [1])
     }
 }

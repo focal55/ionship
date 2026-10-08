@@ -30,7 +30,9 @@ struct ChooseView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(picker.visible) { chat in
-                            ChatRow(chat: chat, isSelected: picker.selected.contains(chat.id)) { picker.toggle(chat.id) }
+                            ChatRow(chat: chat, title: picker.title(for: chat), isSelected: picker.selected.contains(chat.id)) {
+                                picker.toggle(chat.id)
+                            }
                                 .padding(.horizontal, 18)
                             Divider().overlay(Theme.hairline)
                         }
@@ -57,60 +59,79 @@ struct ChooseView: View {
 
 private struct ChatRow: View {
     let chat: Chat
+    let title: String
     let isSelected: Bool
     let toggle: () -> Void
 
     var body: some View {
-        Toggle(isOn: Binding(get: { isSelected }, set: { _ in toggle() })) {
-            HStack(spacing: 14) {
-                Text(initials)
-                    .font(.system(size: 12, weight: .medium))
-                    .frame(width: 32, height: 32)
-                    .background(Color(white: 0.91), in: .circle)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(ConversationPicker.title(for: chat)).font(.system(size: 14, weight: .medium)).lineLimit(1)
-                    Text(chat.isGroup ? "Group · \(chat.participants.count) people" : "Conversation")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.muted)
-                }
-                Spacer()
-                Text(chat.messageCount.formatted())
-                    .font(Theme.mono(12))
-                    .foregroundStyle(Theme.secondary)
-                    .frame(width: 90, alignment: .trailing)
-                Text(chat.lastMessageDate.map { $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "")
-                    .font(Theme.mono(12))
+        HStack(spacing: 14) {
+            Toggle(title, isOn: Binding(get: { isSelected }, set: { _ in toggle() }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .tint(Theme.accent)
+            Text(initials)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 32, height: 32)
+                .background(Color(white: 0.91), in: .circle)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                Text(subtitle)
+                    .font(.system(size: 12))
                     .foregroundStyle(Theme.muted)
-                    .frame(width: 90, alignment: .trailing)
+                    .lineLimit(1)
             }
-            .padding(.vertical, 6)
+            Spacer()
+            Text(chat.messageCount.formatted())
+                .font(Theme.mono(12))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 90, alignment: .trailing)
+            Text(chat.lastMessageDate.map { $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "")
+                .font(Theme.mono(12))
+                .foregroundStyle(Theme.muted)
+                .frame(width: 90, alignment: .trailing)
         }
-        .toggleStyle(.checkbox)
-        .tint(Theme.accent)
+        .padding(.vertical, 10)
+        .contentShape(.rect)
+        .onTapGesture(perform: toggle)
+    }
+
+    private var subtitle: String {
+        if chat.isGroup { return "Group · \(chat.participants.count) people" }
+        let handle = chat.participants.first ?? chat.identifier
+        return title == handle ? "Not in Contacts" : handle
     }
 
     private var initials: String {
-        let title = ConversationPicker.title(for: chat)
         let letters = title.split(separator: " ").prefix(2).compactMap(\.first).filter(\.isLetter)
         return letters.isEmpty ? "#" : String(letters).uppercased()
     }
 }
 
 #Preview {
-    @Previewable @State var picker = ConversationPicker(chats: [
-        Chat(id: 1, identifier: "+15550104471", displayName: nil, isGroup: false, participants: ["+15550104471"],
-             messageCount: 11_804, lastMessageDate: .now),
-        Chat(id: 2, identifier: "maya@example.com", displayName: nil, isGroup: false, participants: ["maya@example.com"],
-             messageCount: 4_212, lastMessageDate: .now.addingTimeInterval(-86_400 * 3)),
-        Chat(id: 3, identifier: "chat42", displayName: "Ybarra family", isGroup: true,
-             participants: ["+15550100001", "+15550100002", "+15550100003", "+15550100004"],
-             messageCount: 3_977, lastMessageDate: .now.addingTimeInterval(-86_400 * 10)),
-        Chat(id: 4, identifier: "+15550109932", displayName: nil, isGroup: false, participants: ["+15550109932"],
-             messageCount: 418, lastMessageDate: .now.addingTimeInterval(-86_400 * 200)),
-    ], preselect: 3)
+    @Previewable @State var picker = samplePicker()
     ChooseView(picker: $picker) {}
         .frame(width: 1280, height: 800)
         .background(Theme.ground)
         .foregroundStyle(Theme.ink)
         .preferredColorScheme(.light)
+}
+
+private func samplePicker() -> ConversationPicker {
+    var picker = ConversationPicker(chats: [
+        Chat(id: 1, identifier: "+15550104471", displayName: nil, isGroup: false, participants: ["+15550104471"],
+             messageCount: 11_804, lastMessageDate: .now),
+        Chat(id: 2, identifier: "maya@example.com", displayName: nil, isGroup: false, participants: ["maya@example.com"],
+             messageCount: 4_212, lastMessageDate: .now.addingTimeInterval(-86_400 * 3)),
+        Chat(id: 3, identifier: "chat42", displayName: nil, isGroup: true,
+             participants: ["+15550104471", "+15550100002", "+15550100003", "+15550100004"],
+             messageCount: 3_977, lastMessageDate: .now.addingTimeInterval(-86_400 * 10)),
+        Chat(id: 4, identifier: "+15550109932", displayName: nil, isGroup: false, participants: ["+15550109932"],
+             messageCount: 418, lastMessageDate: .now.addingTimeInterval(-86_400 * 200)),
+    ], preselect: 3)
+    picker.names = HandleDirectory(entries: [
+        .init(name: "Mom", phones: ["+1 (555) 010-4471"], emails: []),
+        .init(name: "Maya Chen", phones: [], emails: ["maya@example.com"]),
+        .init(name: "Dad", phones: ["555-010-0002"], emails: []),
+    ])
+    return picker
 }

@@ -42,6 +42,7 @@ final class AppModel {
             let chats = try await Task.detached { try MessagesStore().chats() }.value
             picker = ConversationPicker(chats: chats)
             phase = .choose
+            picker.names = await ContactsLoader.directory()
         } catch {
             phase = .failed(String(describing: error))
         }
