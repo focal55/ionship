@@ -10,6 +10,7 @@ struct HealthView: View {
 
     let people: [PersonHealth]
     let loadThread: (Conversation) async -> [Message]
+    let loadOpenLoops: (PersonHealth) async -> OpenLoops
     let onChangeConversations: () -> Void
     @State private var selection: Int64?
     @State private var tab = Tab.health
@@ -32,7 +33,7 @@ struct HealthView: View {
                     Divider().overlay(Theme.hairline)
                     switch (tab, person.health) {
                     case (.thread, _): ThreadView(person: person, load: loadThread)
-                    case (.health, .person(let metrics)): PersonHealthDetail(person: person, metrics: metrics)
+                    case (.health, .person(let metrics)): PersonHealthDetail(person: person, metrics: metrics, loadOpenLoops: loadOpenLoops)
                     case (.health, .group(let metrics)): GroupHealthDetail(group: person, metrics: metrics)
                     }
                 }
@@ -103,6 +104,7 @@ struct HealthView: View {
 private struct PersonHealthDetail: View {
     let person: PersonHealth
     let metrics: RelationshipMetrics
+    let loadOpenLoops: (PersonHealth) async -> OpenLoops
 
     var body: some View {
         ScrollView {
@@ -126,6 +128,7 @@ private struct PersonHealthDetail: View {
                 }
 
                 tiles
+                OpenLoopsSection(person: person, load: loadOpenLoops)
                 VolumeChart(weeks: metrics.weekly)
             }
             .padding(36)
@@ -226,7 +229,10 @@ enum Elapsed {
 }
 
 #Preview {
-    HealthView(people: samplePeople(), loadThread: { _ in [] }) {}
+    HealthView(people: samplePeople(), loadThread: { _ in [] }, loadOpenLoops: { _ in
+        .judged([OpenLoop(id: 1, task: "Send the Big Sur photos", date: .now.addingTimeInterval(-9 * 86_400), isConfirmed: true),
+                 OpenLoop(id: 2, task: "Ask how the interview went", date: .now.addingTimeInterval(-3 * 86_400), isConfirmed: false)])
+    }) {}
         .frame(width: 960, height: 760)
         .background(Theme.ground)
         .foregroundStyle(Theme.ink)

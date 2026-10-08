@@ -69,7 +69,7 @@ struct GroupHealthDetail: View {
                     ShareBar(share: member.share, color: color(for: member.handle))
                     Text(member.starts.formatted()).font(Theme.mono(13))
                     Text(Elapsed.short(member.medianResponse)).font(Theme.mono(13))
-                    Text(member.lastActive.map(Elapsed.ago) ?? "never").font(Theme.mono(13)).foregroundStyle(Theme.secondary)
+                    Text(member.lastActive.map { Elapsed.ago($0) } ?? "never").font(Theme.mono(13)).foregroundStyle(Theme.secondary)
                 }
                 .padding(.vertical, 10)
             }

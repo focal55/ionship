@@ -84,6 +84,17 @@ final class AppModel {
     }
 
     private var threads: [Int64: [Message]] = [:]
+    private var loops: [Int64: OpenLoops] = [:]
+
+    func openLoops(for person: PersonHealth) async -> OpenLoops {
+        if let cached = loops[person.id] { return cached }
+        let candidates = OpenLoopCandidate.find(in: await thread(for: person.conversation))
+        let result = await OpenLoopJudge.evaluate(candidates, name: { handle in
+            handle.map { person.memberNames[$0] ?? person.title } ?? "You"
+        })
+        loops[person.id] = result
+        return result
+    }
 
     func thread(for conversation: Conversation) async -> [Message] {
         if let cached = threads[conversation.id] { return cached }
