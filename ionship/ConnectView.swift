@@ -37,6 +37,11 @@ struct ConnectView: View {
                 step("01", "Open System Settings › Privacy & Security › Full Disk Access")
                 step("02", "Switch on ionship, or drag it into the list")
                 step("03", "Come back here — no restart needed")
+                Text("Already switched on? An older copy of ionship may be listed under the same name. Turn on the one that’s off, or remove both with – and add ionship again.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
             }
             .padding(24)
             .frame(maxWidth: 420, alignment: .leading)
