@@ -45,7 +45,7 @@ struct RootView: View {
             }
         case .health:
             HealthView(people: model.people, threads: model.threads, loadOpenLoops: model.openLoops(for:),
-                       indexingProgress: model.indexingProgress, search: model.searchMemory,
+                       indexingProgress: model.indexingProgress, memoryEnabled: $model.memoryEnabled, search: model.searchMemory,
                        onChangeConversations: model.changeConversations)
         case .failed(let message):
             Text(message).foregroundStyle(Theme.secondary).padding()

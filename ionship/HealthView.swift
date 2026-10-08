@@ -12,6 +12,7 @@ struct HealthView: View {
     let threads: [Int64: [Message]]
     let loadOpenLoops: (PersonHealth) async -> OpenLoops
     let indexingProgress: Double?
+    @Binding var memoryEnabled: Bool
     let search: (String) async -> [MemoryResult]
     let onChangeConversations: () -> Void
     @State private var selection: Int64?
@@ -19,6 +20,7 @@ struct HealthView: View {
     @State private var query = ""
     @State private var results: [MemoryResult]?
     @State private var focus: Int64?
+    @State private var confirmingMemoryDelete = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -55,8 +57,9 @@ struct HealthView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            TextField("Search memory", text: $query)
+            TextField(memoryEnabled ? "Search memory" : "Memory is off", text: $query)
                 .textFieldStyle(.roundedBorder)
+                .disabled(!memoryEnabled)
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
                 .onSubmit {
@@ -81,6 +84,27 @@ struct HealthView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
+            }
+            Toggle(isOn: Binding(get: { memoryEnabled }, set: { on in
+                if on { memoryEnabled = true } else { confirmingMemoryDelete = true }
+            })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Memory").font(.system(size: 13, weight: .medium))
+                    Text("Searchable copy kept on this Mac").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .confirmationDialog("Delete memory?", isPresented: $confirmingMemoryDelete) {
+                Button("Delete memory", role: .destructive) {
+                    memoryEnabled = false
+                    query = ""
+                    results = nil
+                }
+            } message: {
+                Text("This erases the searchable copy of your conversations from this Mac. Health, threads and open loops keep working.")
             }
             Button("Change conversations", action: onChangeConversations)
                 .buttonStyle(.plain)
@@ -262,7 +286,7 @@ enum Elapsed {
     HealthView(people: samplePeople(), threads: [:], loadOpenLoops: { _ in
         .judged([OpenLoop(id: 1, task: "Send the Big Sur photos", date: .now.addingTimeInterval(-9 * 86_400), isConfirmed: true),
                  OpenLoop(id: 2, task: "Ask how the interview went", date: .now.addingTimeInterval(-3 * 86_400), isConfirmed: false)])
-    }, indexingProgress: 0.4, search: { _ in [] }) {}
+    }, indexingProgress: 0.4, memoryEnabled: .constant(true), search: { _ in [] }) {}
         .frame(width: 960, height: 760)
         .background(Theme.ground)
         .foregroundStyle(Theme.ink)

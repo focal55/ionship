@@ -102,6 +102,30 @@ final class AppModel {
     private var loops: [Int64: OpenLoops] = [:]
     private var cursor: Int64 = 0
     private var syncing: Task<Void, Never>?
+    private static let memoryEnabledKey = "memoryEnabled"
+
+    /// Off deletes the memory file; on rebuilds it from the chosen conversations.
+    var memoryEnabled = UserDefaults.standard.object(forKey: AppModel.memoryEnabledKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(memoryEnabled, forKey: Self.memoryEnabledKey)
+            if memoryEnabled {
+                updateMemory(for: people)
+            } else {
+                let pending = indexing
+                pending?.cancel()
+                indexingProgress = nil
+                let path = Self.memoryPath
+                // A batch already writing finishes before cancellation is seen; delete only after it.
+                indexing = Task {
+                    await pending?.value
+                    await Task.detached {
+                        for suffix in ["", "-journal", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: path + suffix) }
+                    }.value
+                }
+            }
+        }
+    }
+
     /// Fraction of chosen conversations indexed into memory; nil when idle.
     private(set) var indexingProgress: Double?
     private var indexing: Task<Void, Never>?
@@ -112,6 +136,7 @@ final class AppModel {
     }
 
     func searchMemory(_ text: String) async -> [MemoryResult] {
+        guard memoryEnabled else { return [] }
         let titles = Dictionary(uniqueKeysWithValues: people.map { ($0.id, $0.title) })
         let hits = await Task.detached { () -> [MemoryIndex.Hit] in
             guard let embedder = ContextualEmbedder(), let index = try? MemoryIndex(path: Self.memoryPath) else { return [] }
@@ -125,6 +150,7 @@ final class AppModel {
     /// Adds closed sessions not yet in memory. Safe to call repeatedly: each conversation
     /// resumes after the last message already indexed.
     private func updateMemory(for targets: [PersonHealth]) {
+        guard memoryEnabled else { return }
         let previous = indexing
         let jobs = targets.map { person in
             (person.id, threads[person.id] ?? [], person.title, person.memberNames)
@@ -210,6 +236,8 @@ final class AppModel {
                 .sorted { $0.messageCount > $1.messageCount }
             phase = .health
             startSyncing()
+            let chosen = Set(people.map(\.id))
+            await Task.detached(priority: .utility) { _ = try? MemoryIndex(path: Self.memoryPath).prune(keeping: chosen) }.value
             updateMemory(for: people)
         } catch {
             phase = .failed(String(describing: error))
