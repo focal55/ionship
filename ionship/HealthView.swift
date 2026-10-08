@@ -48,7 +48,7 @@ struct HealthView: View {
                     switch (tab, person.health) {
                     case (.thread, _): ThreadView(person: person, messages: threads[person.id] ?? [], focus: focus)
                     case (.health, .person(let metrics)): PersonHealthDetail(person: person, metrics: metrics, loadOpenLoops: loadOpenLoops)
-                    case (.health, .group(let metrics)): GroupHealthDetail(group: person, metrics: metrics)
+                    case (.health, .group(let metrics)): GroupHealthDetail(group: person, metrics: metrics, loadOpenLoops: loadOpenLoops)
                     }
                 }
             }

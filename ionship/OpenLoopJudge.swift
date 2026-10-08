@@ -11,7 +11,7 @@ enum LoopStatus {
 
 @Generable
 struct LoopVerdict {
-    @Guide(description: "True only if 'You' committed to do something specific for or with the other person. Plans to show up or quick replies are not promises.")
+    @Guide(description: "True if 'You' committed to do something specific for or with the others, including offers like 'let me ask…' or 'I'll check…'. Saying you are on your way, and quick acknowledgements, are not promises.")
     var isPromise: Bool
 
     @Guide(description: "The promised task in six words or fewer, starting with a verb, for example 'Send the Big Sur photos'.")
@@ -35,9 +35,9 @@ enum OpenLoops: Equatable {
 
 enum OpenLoopJudge {
     private static let instructions = """
-        You read short excerpts of a text conversation between 'You' and someone else. Decide whether \
-        You's first message is a promise to do something, and whether the messages after it show it was done. \
-        Be conservative: when in doubt it is not a promise.
+        You read short excerpts of a text conversation between 'You' and one or more other people, sometimes a \
+        group chat. Decide whether You's first message is a promise to do something for or with them, and whether \
+        the messages after it show it was done. Judge only from the excerpt.
         """
 
     /// Runs entirely on device. Each candidate gets a fresh session so the small context
@@ -49,13 +49,27 @@ enum OpenLoopJudge {
         }
         var loops: [OpenLoop] = []
         for candidate in recent {
-            let session = LanguageModelSession(instructions: instructions)
-            guard let verdict = try? await session.respond(to: excerpt(candidate, name: name), generating: LoopVerdict.self).content,
-                  verdict.isPromise, verdict.status != .done else { continue }
+            let prompt = excerpt(candidate, name: name)
+            guard let verdict = await judge(prompt) else {
+                // The safety filter blocks some ordinary messages at random; show these unjudged rather than drop them.
+                loops.append(OpenLoop(id: candidate.id, task: String((candidate.message.text ?? "").prefix(120)),
+                                      date: candidate.message.date, isConfirmed: false))
+                continue
+            }
+            guard verdict.isPromise, verdict.status != .done else { continue }
             loops.append(OpenLoop(id: candidate.id, task: verdict.task, date: candidate.message.date,
                                   isConfirmed: verdict.status == .open))
         }
         return .judged(loops)
+    }
+
+    /// One retry: guardrail blocks on this kind of text are intermittent.
+    private static func judge(_ prompt: String) async -> LoopVerdict? {
+        for _ in 0..<2 {
+            let session = LanguageModelSession(instructions: instructions)
+            if let verdict = try? await session.respond(to: prompt, generating: LoopVerdict.self).content { return verdict }
+        }
+        return nil
     }
 
     private static func excerpt(_ candidate: OpenLoopCandidate, name: (String?) -> String) -> String {

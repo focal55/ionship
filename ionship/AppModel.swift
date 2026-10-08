@@ -197,8 +197,10 @@ final class AppModel {
     func openLoops(for person: PersonHealth) async -> OpenLoops {
         if let cached = loops[person.id] { return cached }
         let candidates = OpenLoopCandidate.find(in: threads[person.id] ?? [])
+        let isGroup = person.conversation.isGroup
         let result = await OpenLoopJudge.evaluate(candidates, name: { handle in
-            handle.map { person.memberNames[$0] ?? person.title } ?? "You"
+            guard let handle else { return "You" }
+            return person.memberNames[handle] ?? (isGroup ? handle : person.title)
         })
         loops[person.id] = result
         return result

@@ -5,6 +5,7 @@ import SwiftUI
 struct GroupHealthDetail: View {
     let group: PersonHealth
     let metrics: GroupMetrics
+    var loadOpenLoops: ((PersonHealth) async -> OpenLoops)?
 
     private static let palette: [Color] = [
         Theme.accent,
@@ -41,6 +42,9 @@ struct GroupHealthDetail: View {
                 }
 
                 memberTable
+                if let loadOpenLoops {
+                    OpenLoopsSection(person: group, load: loadOpenLoops)
+                }
                 VolumeChart(weeks: metrics.weekly, others: "Everyone else")
             }
             .padding(36)
