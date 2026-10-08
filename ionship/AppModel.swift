@@ -135,12 +135,29 @@ final class AppModel {
         return support.appendingPathComponent("Ionship/memory.sqlite").path
     }
 
+    /// Prefers the bundled MiniLM model and falls back to Apple's. The index is opened with the
+    /// chosen model's id, which clears it whenever the model changes.
+    nonisolated private static func openMemory() -> (index: MemoryIndex, embedder: any Embedder)? {
+        let embedder: any Embedder
+        let id: String
+        if let url = Bundle.main.url(forResource: "MiniLM", withExtension: "mlmodelc"),
+           let model = try? SentenceModelEmbedder(compiledModelAt: url) {
+            (embedder, id) = (model, SentenceModelEmbedder.id)
+        } else if let apple = ContextualEmbedder() {
+            (embedder, id) = (apple, "apple-contextual")
+        } else {
+            return nil
+        }
+        guard let index = try? MemoryIndex(path: memoryPath, embedderID: id) else { return nil }
+        return (index, embedder)
+    }
+
     func searchMemory(_ text: String) async -> [MemoryResult] {
         guard memoryEnabled else { return [] }
         let titles = Dictionary(uniqueKeysWithValues: people.map { ($0.id, $0.title) })
         let hits = await Task.detached { () -> [MemoryIndex.Hit] in
-            guard let embedder = ContextualEmbedder(), let index = try? MemoryIndex(path: Self.memoryPath) else { return [] }
-            return (try? index.search(text, embedder: embedder, limit: 30)) ?? []
+            guard let memory = Self.openMemory() else { return [] }
+            return (try? memory.index.search(text, embedder: memory.embedder, limit: 30)) ?? []
         }.value
         return hits.compactMap { hit in
             titles[hit.moment.conversationID].map { MemoryResult(moment: hit.moment, title: $0) }
@@ -162,7 +179,7 @@ final class AppModel {
                 if jobs.count > 1 { indexingProgress = Double(offset) / Double(jobs.count) }
                 let (id, messages, title, memberNames) = job
                 await Task.detached(priority: .utility) {
-                    guard let embedder = ContextualEmbedder(), let index = try? MemoryIndex(path: Self.memoryPath),
+                    guard let (index, embedder) = Self.openMemory(),
                           let through = try? index.indexedThrough(conversationID: id) else { return }
                     let pending = messages.filter { $0.id > through }
                     let moments = Moment.split(pending, conversationID: id) { handle in
@@ -237,7 +254,7 @@ final class AppModel {
             phase = .health
             startSyncing()
             let chosen = Set(people.map(\.id))
-            await Task.detached(priority: .utility) { _ = try? MemoryIndex(path: Self.memoryPath).prune(keeping: chosen) }.value
+            await Task.detached(priority: .utility) { _ = try? Self.openMemory()?.index.prune(keeping: chosen) }.value
             updateMemory(for: people)
         } catch {
             phase = .failed(String(describing: error))
