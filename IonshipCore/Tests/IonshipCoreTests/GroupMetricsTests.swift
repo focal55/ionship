@@ -72,13 +72,29 @@ private func g(_ id: Int64, _ sender: String?, at offset: TimeInterval, kind: Me
     @Test func driftingMemberLostMostOfTheirShareRecently() {
         let early = (0..<20).map { g(Int64($0), $0.isMultiple(of: 2) ? "A" : "B", at: Double($0) * 60) }
         let recent = (0..<20).map { g(Int64(100 + $0), $0.isMultiple(of: 2) ? "B" : nil, at: 300 * day + Double($0) * 60) }
-        let metrics = GroupMetrics.compute(early + recent, participants: ["A", "B"], now: base.addingTimeInterval(301 * day))
-        #expect(metrics.observations.contains(.drifting(handle: "A", usual: 0.25, recent: 0)))
-        #expect(metrics.members.first { $0.handle == "A" }?.recentShare == 0)
+        let stillAround = g(200, "A", at: 300 * day + 30 * 60)
+        let metrics = GroupMetrics.compute(early + recent + [stillAround], participants: ["A", "B"], now: base.addingTimeInterval(301 * day))
+        #expect(metrics.observations.contains(.drifting(handle: "A", usual: 11.0 / 41.0, recent: 1.0 / 21.0)))
+        #expect(!metrics.observations.contains(.goneQuiet(handle: "A", days: 301)))
     }
 
     @Test func weeklyVolumeIsIncluded() {
         #expect(metrics.weekly.count == 52)
         #expect(metrics.weekly.reduce(0) { $0 + $1.mine + $1.theirs } == 7)
+    }
+
+    @Test func regularWhoWentSilentWhileTheGroupKeptTalking() {
+        let rotation: [String?] = ["A", "B", nil]
+        let early = (0..<30).map { g(Int64($0), rotation[$0 % 3], at: Double($0) * 60) }
+        let lately = (0..<10).map { g(Int64(100 + $0), $0.isMultiple(of: 2) ? "B" : nil, at: 50 * day + Double($0) * 60) }
+        let metrics = GroupMetrics.compute(early + lately, participants: ["A", "B"], now: base.addingTimeInterval(52 * day))
+        #expect(metrics.observations.contains(.goneQuiet(handle: "A", days: 52)))
+    }
+
+    @Test func quietGroupsDoNotFlagQuietMembers() {
+        let rotation: [String?] = ["A", "B", nil]
+        let early = (0..<30).map { g(Int64($0), rotation[$0 % 3], at: Double($0) * 60) }
+        let metrics = GroupMetrics.compute(early, participants: ["A", "B"], now: base.addingTimeInterval(52 * day))
+        #expect(!metrics.observations.contains { if case .goneQuiet = $0 { true } else { false } })
     }
 }

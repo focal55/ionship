@@ -17,6 +17,7 @@ public struct GroupMetrics: Sendable, Equatable {
     public enum Observation: Sendable, Hashable {
         case carries(handle: String?, share: Double)
         case drifting(handle: String?, usual: Double, recent: Double)
+        case goneQuiet(handle: String?, days: Int)
     }
 
     public let messageCount: Int
@@ -75,23 +76,27 @@ public struct GroupMetrics: Sendable, Equatable {
             messageCount: spoken.count,
             conversations: sessions.count,
             members: members,
-            observations: observations(members, recentTotal: recentTotal),
+            observations: observations(members, recentTotal: recentTotal, groupLastActive: spoken.last?.date, now: now),
             weekly: RelationshipMetrics.weeklyVolume(spoken, now: now)
         )
     }
 
     // Thresholds keep small or quiet groups from producing noise: a carrier needs at least
     // two others to carry, and drift needs enough recent traffic to be more than chance.
-    private static func observations(_ members: [Member], recentTotal: Int) -> [Observation] {
+    // A 90-day share is slow to register someone who stopped entirely, so silence while the
+    // group stays active is checked separately and takes precedence over drift.
+    private static func observations(_ members: [Member], recentTotal: Int, groupLastActive: Date?, now: Date) -> [Observation] {
         var result: [Observation] = []
         if members.count >= 3, let top = members.first, top.share > 0.5 {
             result.append(.carries(handle: top.handle, share: top.share))
         }
-        if recentTotal >= 10 {
-            for member in members where member.share >= 0.15 {
-                if let recent = member.recentShare, recent < member.share / 2 {
-                    result.append(.drifting(handle: member.handle, usual: member.share, recent: recent))
-                }
+        let groupIsActive = groupLastActive.map { now.timeIntervalSince($0) < 7 * 86_400 } ?? false
+        for member in members where member.share >= 0.15 {
+            let silence = member.lastActive.map { now.timeIntervalSince($0) } ?? 0
+            if groupIsActive, silence > 30 * 86_400 {
+                result.append(.goneQuiet(handle: member.handle, days: Int((silence / 86_400).rounded())))
+            } else if recentTotal >= 10, let recent = member.recentShare, recent < member.share / 2 {
+                result.append(.drifting(handle: member.handle, usual: member.share, recent: recent))
             }
         }
         return result
