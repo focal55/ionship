@@ -24,7 +24,7 @@ Within a kind, the oldest item comes first. A conversation appears at most once,
 - Only text and attachment messages count as spoken messages. A **reaction from you** after their last spoken message counts as an answer.
 - **Window:** their message must be at least 1 hour old and at most 21 days old. Newer messages aren't waiting yet; older ones are left to "gone quiet".
 - **Closers** never count as unanswered. A closer is a message whose whole text, after trimming and lowercasing, ignoring trailing punctuation and emoji, is one of: ok, okay, k, kk, thanks, thank you, thx, ty, lol, haha, hahaha, lmao, nice, cool, sounds good, got it, np, no problem, you too, will do, perfect, great, 👍, ❤️. A message that contains `?` is never a closer.
-- If they sent several messages after your last one, the row shows the latest, and the kind is "asked you" if any of them contains `?`.
+- If they sent several messages after your last one, the row shows the latest one that isn't a closer, the kind is "asked you" if any of them contains `?`, and the item counts as waiting since the first of them. If every one is a closer, nothing is waiting.
 
 ## Screen
 
@@ -49,4 +49,4 @@ Notifications, a menu-bar list, unanswered messages in group chats, and the chec
 ## Testing
 
 - **OdeCore, test-first:** each unanswered rule (window bounds, closers, `?`, reactions as answers, multiple trailing messages, groups excluded), plus ranking and de-duplication across kinds.
-- **App:** a manual check against real data, and a preview with sample rows of every kind.
+- **App:** a manual check against real data, and a preview showing "asked you" and "unanswered" rows. "Promised" and "gone quiet" are covered by the OdeCore tests.
