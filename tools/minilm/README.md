@@ -1,6 +1,6 @@
-# MiniLM for Ionship
+# MiniLM for Ode
 
-Rebuilds `ionship/MiniLM.mlpackage` and the tokenizer fixtures in IonshipCore.
+Rebuilds `Ode/MiniLM.mlpackage` and the tokenizer fixtures in OdeCore.
 
 ```sh
 uv venv --python 3.12 .venv
@@ -14,5 +14,5 @@ The pins matter: coremltools 9 fails on NumPy 2.3+ ("only 0-dimensional arrays c
 Verify the Swift pipeline against the reference numbers:
 
 ```sh
-cd IonshipCore && IONSHIP_MODEL_PATH=../ionship/MiniLM.mlpackage swift test --filter SentenceModelEmbedder
+cd OdeCore && ODE_MODEL_PATH=../Ode/MiniLM.mlpackage swift test --filter SentenceModelEmbedder
 ```
