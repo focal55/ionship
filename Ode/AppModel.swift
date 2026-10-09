@@ -75,6 +75,7 @@ final class AppModel {
     private static let selectionKey = "selectedChatIDs"
     private static let labelsKey = "relationshipLabels"
     private static let pinnedKey = "pinnedConversations"
+    private static let dismissedKey = "dismissedWaiting"
 
     private(set) var labels: [Int64: Relationship] = {
         let stored = UserDefaults.standard.dictionary(forKey: AppModel.labelsKey) as? [String: String] ?? [:]
@@ -83,6 +84,11 @@ final class AppModel {
         })
     }()
     private(set) var pinned = Set((UserDefaults.standard.array(forKey: AppModel.pinnedKey) as? [Int] ?? []).map(Int64.init))
+    private(set) var dismissedWaiting: [Int64: Int64] = (UserDefaults.standard.dictionary(forKey: AppModel.dismissedKey) as? [String: Int] ?? [:])
+        .reduce(into: [:]) { result, entry in
+            if let id = Int64(entry.key) { result[id] = Int64(entry.value) }
+        }
+    private(set) var checkingPromises = false
 
     func setLabel(_ label: Relationship?, for id: Int64) {
         labels[id] = label
@@ -325,6 +331,42 @@ final class AppModel {
         return []
     }
 
+    /// The home list: who is waiting to hear from you, most urgent first.
+    var waiting: [Waiting] {
+        let items = people.flatMap { person -> [Waiting] in
+            let thread = threads[person.id] ?? []
+            let newest = thread.map(\.id).max() ?? 0
+            var found = confirmedLoops(for: person).map {
+                Waiting.promised(in: person.conversation, task: $0.task, made: $0.date, newestMessageID: newest)
+            }
+            if let unanswered = Waiting.unanswered(in: person.conversation, messages: thread) { found.append(unanswered) }
+            if case .person(let metrics) = person.health,
+               let quiet = Waiting.quiet(in: person.conversation, metrics: metrics, newestMessageID: newest) {
+                found.append(quiet)
+            }
+            return found
+        }
+        return Waiting.rank(items, dismissed: dismissedWaiting)
+    }
+
+    func dismiss(_ item: Waiting) {
+        dismissedWaiting[item.conversationID] = item.newestMessageID
+        UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: dismissedWaiting.map { (String($0.key), Int($0.value)) }),
+                                  forKey: Self.dismissedKey)
+    }
+
+    /// Judges open loops for everyone not judged yet, so promises reach the home list without opening each person.
+    private func judgePromises() {
+        guard !checkingPromises else { return }
+        checkingPromises = true
+        Task {
+            while let person = people.first(where: { loops[$0.id] == nil }) {
+                _ = await openLoops(for: person)
+            }
+            checkingPromises = false
+        }
+    }
+
     func draftReply(for person: PersonHealth, steer: String, length: DraftLength) async -> DraftResult {
         await ReplyDrafter.draft(messages: threads[person.id] ?? [], name: speakerName(for: person),
                                  openLoops: confirmedLoops(for: person).map(\.task), steer: steer, length: length,
@@ -395,6 +437,7 @@ final class AppModel {
             let chosen = Set(people.map(\.id))
             await Task.detached(priority: .utility) { _ = try? Self.openMemory()?.index.prune(keeping: chosen) }.value
             updateMemory(for: people)
+            judgePromises()
         } catch {
             phase = .failed(String(describing: error))
         }
@@ -432,6 +475,7 @@ final class AppModel {
             loops[id] = nil
             updateMemory(for: [people[index]])
         }
+        judgePromises()
     }
 }
 
@@ -464,6 +508,10 @@ extension AppModel {
         people.append(sampleGroup())
         model.people = people
         model.threads = [2: maya.sorted { $0.date < $1.date }]
+        model.threads[1] = [
+            message(2000, true, "landed, love you", daysAgo: 2, chat: 1),
+            message(2001, false, "Are you still coming Sunday? Dad wants to grill", daysAgo: 0.15, chat: 1),
+        ]
         model.loops[2] = .judged([
             OpenLoop(id: 4, task: "Send the Big Sur photos", date: maya[maya.count - 2].date, isConfirmed: true),
             OpenLoop(id: 2, task: "Ask how round two goes", date: maya[maya.count - 4].date, isConfirmed: true),
