@@ -200,6 +200,22 @@ final class AppModel {
         phase = .choose
     }
 
+    var canReturnToHealth: Bool { !people.isEmpty }
+
+    func returnToHealth() {
+        phase = .health
+        startSyncing()
+    }
+
+    private static let liveSyncKey = "liveSyncEnabled"
+
+    var liveSyncEnabled = UserDefaults.standard.object(forKey: AppModel.liveSyncKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(liveSyncEnabled, forKey: Self.liveSyncKey)
+            if !liveSyncEnabled { syncing?.cancel() }
+        }
+    }
+
     /// Every message of every chosen conversation, oldest first, kept current by live sync.
     private(set) var threads: [Int64: [Message]] = [:]
     private var loops: [Int64: OpenLoops] = [:]
@@ -378,6 +394,8 @@ final class AppModel {
     }
 
     private func startSyncing() {
+        syncing?.cancel()
+        guard liveSyncEnabled else { return }
         syncing = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
@@ -450,6 +468,19 @@ extension AppModel {
                              end: .now.addingTimeInterval(-50 * day), text: "Maya Chen: my sister’s wedding is Nov 8 in Portland, can you come?")
         model.recalledCache[2] = MemoryResult(moment: wedding, title: "Maya Chen", score: 0.91)
         model.labels = [2: .friend]
+        var picker = ConversationPicker(chats: [
+            Chat(id: 1, identifier: "+15550104471", displayName: nil, isGroup: false, participants: ["+15550104471"],
+                 messageCount: 11_804, lastMessageDate: .now, firstMessageDate: .now.addingTimeInterval(-3_600 * day), service: "iMessage"),
+            mayaChat,
+            Chat(id: 3, identifier: "chat42", displayName: "Ybarra family", isGroup: true,
+                 participants: ["+15550100001", "+15550100002", "+15550100003", "+15550100004", "+15550100005"],
+                 messageCount: 3_977, lastMessageDate: .now, firstMessageDate: .now.addingTimeInterval(-2_100 * day), service: "iMessage"),
+            Chat(id: 4, identifier: "+15550109932", displayName: nil, isGroup: false, participants: ["+15550109932"],
+                 messageCount: 418, lastMessageDate: .now, firstMessageDate: .now.addingTimeInterval(-1_400 * day), service: "SMS"),
+        ], preselect: 3)
+        picker.names = HandleDirectory(entries: [.init(name: "Mom", phones: ["5550104471"], emails: []),
+                                                 .init(name: "Maya Chen", phones: [], emails: ["maya@example.com"])])
+        model.picker = picker
         model.phase = .health
         return model
     }

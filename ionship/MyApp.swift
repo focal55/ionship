@@ -19,15 +19,31 @@ struct RootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Wordmark(); Spacer() }
+            if showsWordmarkBar {
+                HStack {
+                    Wordmark()
+                    Spacer()
+                    if case .connect = model.phase {
+                        Text("STEP 1 OF 2").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                    }
+                }
                 .padding(.horizontal, 20)
-                .frame(height: 52)
-            Divider().overlay(Theme.hairline)
+                .frame(height: 56)
+                Divider().overlay(Theme.hairline)
+            }
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .foregroundStyle(Theme.ink)
         .background(Theme.ground)
         .preferredColorScheme(.light)
+    }
+
+    /// The main window and the chooser draw their own headers.
+    private var showsWordmarkBar: Bool {
+        switch model.phase {
+        case .choose, .health: false
+        default: true
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -37,7 +53,7 @@ struct RootView: View {
         case .connect(let access):
             ConnectView(access: access)
         case .choose:
-            ChooseView(picker: $model.picker, onImport: model.importSelected)
+            ChooseView(model: model)
         case .analyzing:
             VStack(spacing: 10) {
                 ProgressView()
