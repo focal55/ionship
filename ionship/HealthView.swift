@@ -2,84 +2,17 @@ import Charts
 import IonshipCore
 import SwiftUI
 
-struct PersonHealthDetail: View {
-    let person: PersonHealth
-    let metrics: RelationshipMetrics
-    let loadOpenLoops: (PersonHealth) async -> OpenLoops
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(person.title).font(.system(size: 34, weight: .semibold)).tracking(-1)
-                    Text("\(metrics.messageCount.formatted()) messages · \(metrics.conversations.formatted()) conversations")
-                        .foregroundStyle(Theme.secondary)
-                }
-
-                let observations = metrics.observations()
-                if !observations.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(observations, id: \.self) { observation in
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Circle().fill(Theme.accent).frame(width: 7, height: 7)
-                                Text(sentence(for: observation)).font(.system(size: 16))
-                            }
-                        }
-                    }
-                }
-
-                tiles
-                OpenLoopsSection(person: person, load: loadOpenLoops)
-                VolumeChart(weeks: metrics.weekly)
-            }
-            .padding(36)
-            .frame(maxWidth: 1000, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity)
-        .background(Theme.surface)
-    }
-
-    private var tiles: some View {
-        Grid(horizontalSpacing: 1, verticalSpacing: 1) {
-            GridRow {
-                Tile(label: "You start", value: metrics.youStartShare.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "—",
-                     detail: "of \(metrics.conversations.formatted()) talks")
-                Tile(label: "Your reply", value: Elapsed.short(metrics.yourMedianReply),
-                     detail: metrics.yourRecentMedianReply.map { "\(Elapsed.short($0)) lately" } ?? "none lately")
-                Tile(label: "Their reply", value: Elapsed.short(metrics.theirMedianReply), detail: "typical")
-                Tile(label: "Long talk", value: metrics.lastLongConversation.map { Elapsed.ago($0) } ?? "—",
-                     detail: metrics.usualGapBetweenLongConversations.map { "usually every \(Elapsed.short($0))" } ?? "none yet")
-            }
-        }
-        .background(Theme.hairline)
-        .clipShape(.rect(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.hairline))
-    }
-
-    private func sentence(for observation: RelationshipMetrics.Observation) -> String {
-        switch observation {
-        case .theyStartMost(let share):
-            "They start \(share.formatted(.percent.precision(.fractionLength(0)))) of your conversations."
-        case .youStartMost(let share):
-            "You start \(share.formatted(.percent.precision(.fractionLength(0)))) of your conversations."
-        case .repliesSlowing(let recent, let usual):
-            "Your replies have slowed: \(Elapsed.short(recent)) lately, \(Elapsed.short(usual)) usually."
-        case .overdue(let since, let usual):
-            "It’s been \(Elapsed.short(since)) since a long conversation. Usually it’s every \(Elapsed.short(usual))."
-        }
-    }
-}
-
 struct Tile: View {
     let label: String
     let value: String
     let detail: String
+    var detailColor = Theme.secondary
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.system(size: 12)).foregroundStyle(Theme.muted)
             Text(value).font(Theme.mono(26).weight(.medium)).tracking(-0.5)
-            Text(detail).font(.system(size: 12)).foregroundStyle(Theme.secondary).lineLimit(1)
+            Text(detail).font(.system(size: 12)).foregroundStyle(detailColor).lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 20)

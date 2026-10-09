@@ -135,8 +135,11 @@ struct MainView: View {
                 }
             case (.memory, _):
                 PersonMemoryView(model: model, person: person) { open($0) }
-            case (.health, .person(let metrics)):
-                PersonHealthDetail(person: person, metrics: metrics, loadOpenLoops: model.openLoops(for:))
+            case (.health, .person):
+                PersonHealthView(model: model, person: person) { messageID in
+                    focus = messageID
+                    tab = .thread
+                }
             case (.health, .group(let metrics)):
                 GroupHealthDetail(group: person, metrics: metrics, loadOpenLoops: model.openLoops(for:))
             }

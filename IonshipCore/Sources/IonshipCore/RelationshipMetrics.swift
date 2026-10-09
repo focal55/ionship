@@ -6,6 +6,12 @@ public struct RelationshipMetrics: Sendable, Equatable {
         public let start: Date
         public let mine: Int
         public let theirs: Int
+
+        public init(start: Date, mine: Int, theirs: Int) {
+            self.start = start
+            self.mine = mine
+            self.theirs = theirs
+        }
     }
 
     public let messageCount: Int

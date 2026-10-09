@@ -113,6 +113,18 @@ final class AppModel {
     }
 
     private var topicsCache: [Int64: [String]] = [:]
+    private var remindersCache: [Int64: [Reminder]] = [:]
+
+    func reminders(for person: PersonHealth) async -> [Reminder] {
+        if let cached = remindersCache[person.id] { return cached }
+        let found = await ReminderExtractor.reminders(in: threads[person.id] ?? [], name: speakerName(for: person))
+        remindersCache[person.id] = found
+        return found
+    }
+
+    func patterns(for person: PersonHealth) -> [Patterns.Pattern] {
+        Patterns.find(in: threads[person.id] ?? [])
+    }
 
     func topics(for person: PersonHealth) async -> [String] {
         if let cached = topicsCache[person.id] { return cached }
@@ -432,6 +444,8 @@ extension AppModel {
             OpenLoop(id: 2, task: "Ask how round two goes", date: maya[maya.count - 4].date, isConfirmed: true),
         ])
         model.topicsCache[2] = ["job search", "portland move", "climbing", "her sister", "photos"]
+        model.remindersCache[2] = [Reminder(when: "Nov 8", text: "Her sister’s wedding in Portland"),
+                                   Reminder(when: "Thursday", text: "Her second-round interview")]
         let wedding = Moment(conversationID: 2, firstMessageID: 900, lastMessageID: 901, start: .now.addingTimeInterval(-50 * day),
                              end: .now.addingTimeInterval(-50 * day), text: "Maya Chen: my sister’s wedding is Nov 8 in Portland, can you come?")
         model.recalledCache[2] = MemoryResult(moment: wedding, title: "Maya Chen", score: 0.91)
