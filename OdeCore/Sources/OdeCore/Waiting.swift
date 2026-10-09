@@ -37,34 +37,53 @@ extension Waiting {
     /// Their messages since your last one, in a 1:1 conversation. `messages` must be in date order.
     /// Younger than an hour isn't waiting yet; older than three weeks is left to `quiet`.
     public static func unanswered(in conversation: Conversation, messages: [Message], now: Date = .now) -> Waiting? {
-        guard !conversation.isGroup, let newest = messages.map(\.id).max() else { return nil }
-        let isSpoken = { (message: Message) in message.kind == .text || message.kind == .attachmentOnly }
+        guard !conversation.isGroup else { return nil }
         let start = messages.lastIndex { $0.isFromMe && isSpoken($0) }.map { $0 + 1 } ?? messages.startIndex
         let after = messages[start...]
-        let theirs = after.filter { !$0.isFromMe && isSpoken($0) }
+        // Only the window counts: someone you never replied to shouldn't carry years of history.
+        let theirs = after.filter { !$0.isFromMe && isSpoken($0) && now.timeIntervalSince($0.date) <= maximumAge }
         guard let latest = theirs.last, let first = theirs.first else { return nil }
         guard !after.contains(where: { $0.isFromMe && $0.kind == .reaction && $0.date >= latest.date }) else { return nil }
-        let age = now.timeIntervalSince(latest.date)
-        guard age >= minimumAge, age <= maximumAge else { return nil }
+        guard now.timeIntervalSince(latest.date) >= minimumAge else { return nil }
         guard let shown = theirs.last(where: { !isCloser($0.text) }) else { return nil }
 
         let asked = theirs.contains { $0.text?.contains("?") == true }
-        let text = shown.text ?? (shown.kind == .attachmentOnly ? "Attachment" : "Message")
-        return Waiting(conversationID: conversation.id, kind: asked ? .asked : .unanswered, text: text,
+        return Waiting(conversationID: conversation.id, kind: asked ? .asked : .unanswered, text: display(shown),
                        steer: asked ? "answer their question" : "reply to their last message",
-                       since: first.date, newestMessageID: newest)
+                       since: first.date, newestMessageID: newestSpokenID(in: messages))
+    }
+
+    /// Messages stores a photo as U+FFFC in the text, alone or before a caption.
+    private static func display(_ message: Message) -> String {
+        let text = (message.text ?? "").replacingOccurrences(of: "\u{FFFC}", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty { return text }
+        return message.textSource == .undecodable ? "Message" : "Attachment"
+    }
+
+    /// The newest message anyone wrote, so tapbacks don't lift a dismissal. `messages` must be in date order.
+    public static func newestSpokenID(in messages: [Message]) -> Int64 {
+        messages.last(where: isSpoken)?.id ?? 0
+    }
+
+    /// Text and attachments, plus messages that couldn't be decoded: those were still written.
+    static func isSpoken(_ message: Message) -> Bool {
+        message.kind == .text || message.kind == .attachmentOnly || message.textSource == .undecodable
     }
 
     private static let closers: Set<String> = [
         "ok", "okay", "k", "kk", "thanks", "thank you", "thx", "ty", "lol", "haha", "hahaha", "lmao", "nice", "cool",
         "sounds good", "got it", "np", "no problem", "you too", "will do", "perfect", "great",
     ]
-    private static let closingEmoji: Set<Character> = ["👍", "❤️"]
+    private static let closingEmoji: Set<Character> = ["👍", "❤", "♥"]
 
     /// A message that ends an exchange and doesn't need a reply.
     static func isCloser(_ text: String?) -> Bool {
         guard let text else { return false }
-        let trimmed = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Skin tones and the emoji variation selector don't change what a 👍 or ❤️ means.
+        let plain = String(String.UnicodeScalarView(text.unicodeScalars.filter {
+            !(0x1F3FB...0x1F3FF).contains($0.value) && $0.value != 0xFE0F
+        }))
+        let trimmed = plain.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("?") else { return false }
         if trimmed.allSatisfy({ closingEmoji.contains($0) || $0.isWhitespace }) { return true }
         var core = Substring(trimmed)

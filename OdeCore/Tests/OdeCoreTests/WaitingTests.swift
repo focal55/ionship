@@ -6,9 +6,15 @@ private let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
 private let hour: TimeInterval = 3_600
 private let day: TimeInterval = 86_400
 
-private func w(_ id: Int64, me: Bool, _ text: String?, hoursAgo: Double, kind: Message.Kind = .text) -> Message {
+private func w(_ id: Int64, me: Bool, _ text: String?, hoursAgo: Double, kind: Message.Kind = .text,
+               source: Message.TextSource = .column) -> Message {
     Message(id: id, guid: "g\(id)", chatID: 7, sender: me ? nil : "+15550001111", isFromMe: me,
-            date: now.addingTimeInterval(-hoursAgo * hour), text: text, textSource: .column, kind: kind)
+            date: now.addingTimeInterval(-hoursAgo * hour), text: text, textSource: source, kind: kind)
+}
+
+/// How MessagesStore shapes a message it couldn't decode: no text, no attachment.
+private func undecodable(_ id: Int64, me: Bool, hoursAgo: Double) -> Message {
+    w(id, me: me, nil, hoursAgo: hoursAgo, kind: .other, source: .undecodable)
 }
 
 private func conversation(group: Bool = false) -> Conversation {
@@ -69,7 +75,8 @@ private func conversation(group: Bool = false) -> Conversation {
         #expect(find([w(1, me: false, "dinner friday?", hoursAgo: 30), w(2, me: false, "also call me", hoursAgo: 0.2)]) == nil)
     }
 
-    @Test(arguments: ["ok", "Okay.", "thanks!!", "Thank you 🙏", "lol 😂", "sounds good", "Got it", "👍", "❤️", "kk", "you too!"])
+    @Test(arguments: ["ok", "Okay.", "thanks!!", "Thank you 🙏", "lol 😂", "sounds good", "Got it", "👍", "❤️", "kk", "you too!",
+                      "👍🏻", "👍🏽", "❤", "♥️", "ok 👍🏾"])
     func closersAreNotWaiting(_ text: String) {
         #expect(find([w(1, me: true, "see you at 7", hoursAgo: 6), w(2, me: false, text, hoursAgo: 5)]) == nil)
     }
@@ -99,7 +106,34 @@ private func conversation(group: Bool = false) -> Conversation {
 
     @Test func attachmentsAndUndecodedTextGetALabel() {
         #expect(find([w(1, me: false, nil, hoursAgo: 3, kind: .attachmentOnly)])?.text == "Attachment")
-        #expect(find([w(1, me: false, nil, hoursAgo: 3)])?.text == "Message")
+        #expect(find([undecodable(1, me: false, hoursAgo: 3)])?.text == "Message")
+    }
+
+    @Test func photoPlaceholdersAreNotShownAsText() {
+        #expect(find([w(1, me: false, "\u{FFFC}", hoursAgo: 3)])?.text == "Attachment")
+        #expect(find([w(1, me: false, "\u{FFFC}Look at this view", hoursAgo: 3)])?.text == "Look at this view")
+    }
+
+    @Test func yourUndecodableReplyStillAnswers() {
+        #expect(find([w(1, me: false, "are you free Saturday?", hoursAgo: 6), undecodable(2, me: true, hoursAgo: 5)]) == nil)
+    }
+
+    @Test func onlyTheirRecentMessagesCountWhenYouNeverReplied() {
+        let item = find([w(1, me: false, "how are you?", hoursAgo: 3 * 365 * 24), w(2, me: false, "on my way to the lake", hoursAgo: 5)])
+        #expect(item?.kind == .unanswered)
+        #expect(item?.since == now.addingTimeInterval(-5 * hour))
+    }
+
+    @Test func theirTapbackDoesNotMoveTheNewestMessage() {
+        let item = find([w(1, me: true, "hey", hoursAgo: 30), w(2, me: false, "free Saturday?", hoursAgo: 6),
+                         w(3, me: false, "Loved “hey”", hoursAgo: 5, kind: .reaction)])
+        #expect(item?.newestMessageID == 2)
+    }
+
+    @Test func newestSpokenIDIgnoresReactions() {
+        #expect(Waiting.newestSpokenID(in: [w(1, me: false, "free Saturday?", hoursAgo: 6),
+                                             w(2, me: false, "Loved “hey”", hoursAgo: 5, kind: .reaction)]) == 1)
+        #expect(Waiting.newestSpokenID(in: []) == 0)
     }
 
     @Test func groupsAreLeftOut() {
