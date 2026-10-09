@@ -42,15 +42,16 @@ enum OpenLoopJudge {
 
     /// Runs entirely on device. Each candidate gets a fresh session so the small context
     /// window only ever holds one excerpt.
-    static func evaluate(_ candidates: [OpenLoopCandidate], name: (String?) -> String, limit: Int = 15) async -> OpenLoops {
+    static func evaluate(_ candidates: [OpenLoopCandidate], name: (String?) -> String, limit: Int = 15,
+                         cloud: CloudRunner? = nil) async -> OpenLoops {
         let recent = Array(candidates.prefix(limit))
-        guard SystemLanguageModel.default.isAvailable else {
+        guard cloud != nil || SystemLanguageModel.default.isAvailable else {
             return .unjudged(recent.map { OpenLoop(id: $0.id, task: $0.message.text ?? "", date: $0.message.date, isConfirmed: false) })
         }
         var loops: [OpenLoop] = []
         for candidate in recent {
             let prompt = excerpt(candidate, name: name)
-            guard let verdict = await judge(prompt) else {
+            guard let verdict = await judge(prompt, cloud: cloud) else {
                 // The safety filter blocks some ordinary messages at random; show these unjudged rather than drop them.
                 loops.append(OpenLoop(id: candidate.id, task: String((candidate.message.text ?? "").prefix(120)),
                                       date: candidate.message.date, isConfirmed: false))
@@ -63,11 +64,20 @@ enum OpenLoopJudge {
         return .judged(loops)
     }
 
-    /// One retry: guardrail blocks on this kind of text are intermittent.
-    private static func judge(_ prompt: String) async -> LoopVerdict? {
+    /// The routed cloud model first; then the on-device model with one retry, since its
+    /// guardrail blocks on this kind of text are intermittent.
+    private static func judge(_ prompt: String, cloud: CloudRunner?) async -> (isPromise: Bool, task: String, status: LoopStatus)? {
+        if let cloud, let data = await cloud(CloudRequest(system: instructions, prompt: prompt, schemaName: "verdict", schema: CloudSchemas.verdict)),
+           let verdict = try? JSONDecoder().decode(CloudSchemas.Verdict.self, from: data) {
+            let status: LoopStatus = verdict.status == "done" ? .done : verdict.status == "open" ? .open : .unclear
+            return (verdict.isPromise, verdict.task, status)
+        }
+        guard SystemLanguageModel.default.isAvailable else { return nil }
         for _ in 0..<2 {
             let session = LanguageModelSession(instructions: instructions)
-            if let verdict = try? await session.respond(to: prompt, generating: LoopVerdict.self).content { return verdict }
+            if let verdict = try? await session.respond(to: prompt, generating: LoopVerdict.self).content {
+                return (verdict.isPromise, verdict.task, verdict.status)
+            }
         }
         return nil
     }

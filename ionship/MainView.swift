@@ -57,7 +57,13 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $showingSettings) {
-            SettingsView(model: model).frame(width: 960, height: 720)
+            SettingsView(model: model).frame(width: 1100, height: 780)
+        }
+        .alert(consentTitle, isPresented: Binding(get: { model.ai.pendingConsent != nil }, set: { _ in })) {
+            Button("Keep on this Mac", role: .cancel) { model.ai.pendingConsent?.resolve(false) }
+            Button("Allow") { model.ai.pendingConsent?.resolve(true) }
+        } message: {
+            Text(consentMessage)
         }
     }
 
@@ -146,6 +152,17 @@ struct MainView: View {
         }
         .frame(maxWidth: .infinity)
         .background(Theme.surface)
+    }
+
+    private var consentTitle: String {
+        guard let request = model.ai.pendingConsent else { return "" }
+        return "Send messages with \(request.conversation) to \(request.provider.name)?"
+    }
+
+    private var consentMessage: String {
+        guard let request = model.ai.pendingConsent else { return "" }
+        let redaction = model.ai.redactBeforeCloud ? " Phone numbers, emails and addresses are replaced first." : ""
+        return "A job you routed to \(request.provider.name) needs recent messages from this conversation. They leave this Mac for that request.\(redaction) ionship asks once per conversation; change this in Settings."
     }
 
     private func subtitle(_ person: PersonHealth) -> String {

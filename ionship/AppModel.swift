@@ -117,7 +117,8 @@ final class AppModel {
 
     func reminders(for person: PersonHealth) async -> [Reminder] {
         if let cached = remindersCache[person.id] { return cached }
-        let found = await ReminderExtractor.reminders(in: threads[person.id] ?? [], name: speakerName(for: person))
+        let found = await ReminderExtractor.reminders(in: threads[person.id] ?? [], name: speakerName(for: person),
+                                                      cloud: cloud(.deepAnalysis, person))
         remindersCache[person.id] = found
         return found
     }
@@ -129,7 +130,7 @@ final class AppModel {
     func topics(for person: PersonHealth) async -> [String] {
         if let cached = topicsCache[person.id] { return cached }
         let name = speakerName(for: person)
-        let topics = await TopicExtractor.topics(in: threads[person.id] ?? [], name: name)
+        let topics = await TopicExtractor.topics(in: threads[person.id] ?? [], name: name, cloud: cloud(.deepAnalysis, person))
         topicsCache[person.id] = topics
         return topics
     }
@@ -167,6 +168,12 @@ final class AppModel {
             guard let handle else { return "You" }
             return person.memberNames[handle] ?? (isGroup ? handle : person.title)
         }
+    }
+
+    let ai = AISettings()
+
+    private func cloud(_ job: AIJob, _ person: PersonHealth) -> CloudRunner? {
+        ai.runner(for: job, conversationID: person.id, title: person.title, label: labels[person.id])
     }
 
     private(set) var phase = Phase.checking
@@ -321,7 +328,7 @@ final class AppModel {
     func draftReply(for person: PersonHealth, steer: String, length: DraftLength) async -> DraftResult {
         await ReplyDrafter.draft(messages: threads[person.id] ?? [], name: speakerName(for: person),
                                  openLoops: confirmedLoops(for: person).map(\.task), steer: steer, length: length,
-                                 isGroup: person.conversation.isGroup)
+                                 isGroup: person.conversation.isGroup, cloud: cloud(.drafting, person))
     }
 
     func openLoops(for person: PersonHealth) async -> OpenLoops {
@@ -331,7 +338,7 @@ final class AppModel {
         let result = await OpenLoopJudge.evaluate(candidates, name: { handle in
             guard let handle else { return "You" }
             return person.memberNames[handle] ?? (isGroup ? handle : person.title)
-        })
+        }, cloud: cloud(.quickReads, person))
         loops[person.id] = result
         return result
     }

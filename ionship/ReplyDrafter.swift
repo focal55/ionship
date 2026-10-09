@@ -1,3 +1,4 @@
+import Foundation
 import FoundationModels
 import IonshipCore
 
@@ -59,8 +60,7 @@ enum ReplyDrafter {
         """
 
     static func draft(messages: [Message], name: (String?) -> String, openLoops: [String], steer: String,
-                      length: DraftLength, isGroup: Bool) async -> DraftResult {
-        guard SystemLanguageModel.default.isAvailable else { return .unavailable }
+                      length: DraftLength, isGroup: Bool, cloud: CloudRunner? = nil) async -> DraftResult {
         var lines = [isGroup ? "Group conversation:" : "Conversation:"]
         lines += messages.filter { $0.kind == .text && $0.text != nil }.suffix(12).map { message in
             "\(message.isFromMe ? "You" : name(message.sender)): \(message.text!.prefix(280))"
@@ -71,6 +71,16 @@ enum ReplyDrafter {
         if !steer.isEmpty { lines.append("You want this reply to: \(steer)") }
         let prompt = lines.joined(separator: "\n")
 
+        if let cloud, let data = await cloud(CloudRequest(system: instructions, prompt: prompt, schemaName: "drafts",
+                                                          schema: CloudSchemas.drafts, effort: "medium")),
+           let drafts = try? JSONDecoder().decode(CloudSchemas.Drafts.self, from: data) {
+            return .drafts([
+                Draft(label: "DIRECT", text: drafts.direct.text, why: drafts.direct.why),
+                Draft(label: "WARM", text: drafts.warm.text, why: drafts.warm.why),
+                Draft(label: "PLAYFUL", text: drafts.playful.text, why: drafts.playful.why),
+            ])
+        }
+        guard SystemLanguageModel.default.isAvailable else { return .unavailable }
         for _ in 0..<2 {
             let session = LanguageModelSession(instructions: instructions)
             if let drafts = try? await session.respond(to: prompt, generating: ReplyDrafts.self).content {

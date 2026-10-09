@@ -20,8 +20,12 @@ struct Reminders {
 /// Dated things worth remembering from the last two months, on device. Only explicit
 /// mentions; empty when the model is unavailable or declines.
 enum ReminderExtractor {
-    static func reminders(in messages: [Message], name: (String?) -> String, now: Date = .now) async -> [Reminder] {
-        guard SystemLanguageModel.default.isAvailable else { return [] }
+    private static let instructions = """
+        You read dated text messages and list upcoming events, dates and plans they state explicitly, such as \
+        birthdays, appointments, trips or invitations. Never guess. If nothing is stated, return no items.
+        """
+
+    static func reminders(in messages: [Message], name: (String?) -> String, now: Date = .now, cloud: CloudRunner? = nil) async -> [Reminder] {
         let cutoff = now.addingTimeInterval(-60 * 86_400)
         var budget = 2600
         var lines: [String] = []
@@ -33,10 +37,13 @@ enum ReminderExtractor {
             lines.append(line)
         }
         guard !lines.isEmpty else { return [] }
-        let session = LanguageModelSession(instructions: """
-            You read dated text messages and list upcoming events, dates and plans they state explicitly, such as \
-            birthdays, appointments, trips or invitations. Never guess. If nothing is stated, return no items.
-            """)
-        return (try? await session.respond(to: lines.reversed().joined(separator: "\n"), generating: Reminders.self).content.items) ?? []
+        let prompt = lines.reversed().joined(separator: "\n")
+        if let cloud, let data = await cloud(CloudRequest(system: instructions, prompt: prompt, schemaName: "reminders", schema: CloudSchemas.reminders)),
+           let found = try? JSONDecoder().decode(CloudSchemas.Reminders.self, from: data) {
+            return found.items.prefix(5).map { Reminder(when: $0.when, text: $0.text) }
+        }
+        guard SystemLanguageModel.default.isAvailable else { return [] }
+        let session = LanguageModelSession(instructions: instructions)
+        return (try? await session.respond(to: prompt, generating: Reminders.self).content.items) ?? []
     }
 }
