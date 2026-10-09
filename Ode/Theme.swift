@@ -40,9 +40,10 @@ struct AccentButtonStyle: ButtonStyle {
 
 struct Wordmark: View {
     var body: some View {
-        HStack(spacing: 8) {
-            Circle().fill(Theme.accent).frame(width: 10, height: 10)
-            Text("Ode").font(.system(size: 16, weight: .semibold)).tracking(-0.3)
-        }
+        Image(.wordmark)
+            .resizable()
+            .scaledToFit()
+            .frame(height: 20)
+            .accessibilityLabel("Ode")
     }
 }
