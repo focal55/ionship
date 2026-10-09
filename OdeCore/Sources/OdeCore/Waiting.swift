@@ -77,3 +77,50 @@ extension Waiting {
         character.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x238C) }
     }
 }
+
+extension Waiting {
+    /// A promise the on-device model confirmed is still open.
+    public static func promised(in conversation: Conversation, task: String, made: Date, newestMessageID: Int64) -> Waiting {
+        let phrase = task.prefix(1).lowercased() + task.dropFirst()
+        return Waiting(conversationID: conversation.id, kind: .promised, text: "You said you'd \(phrase)",
+                       steer: "follow up on: \(phrase)", since: made, newestMessageID: newestMessageID)
+    }
+
+    /// A 1:1 relationship well past its usual gap between long conversations.
+    public static func quiet(in conversation: Conversation, metrics: RelationshipMetrics, newestMessageID: Int64,
+                             now: Date = .now) -> Waiting? {
+        guard !conversation.isGroup else { return nil }
+        for case .overdue(let since, let usual) in metrics.observations(now: now) {
+            return Waiting(conversationID: conversation.id, kind: .quiet,
+                           text: "You usually talk \(every(usual)); it's been \(been(since))", steer: "reconnect",
+                           since: now.addingTimeInterval(-since), newestMessageID: newestMessageID)
+        }
+        return nil
+    }
+
+    /// One row per conversation under its most urgent kind, most urgent first and oldest first within a kind.
+    /// `dismissed` maps a conversation to the newest message id when it was dismissed.
+    public static func rank(_ items: [Waiting], dismissed: [Int64: Int64] = [:]) -> [Waiting] {
+        Dictionary(grouping: items, by: \.conversationID).values
+            .compactMap { group in group.min { ($0.kind, $0.since) < ($1.kind, $1.since) } }
+            .filter { item in dismissed[item.conversationID].map { item.newestMessageID > $0 } ?? true }
+            .sorted { ($0.kind, $0.since, $0.conversationID) < ($1.kind, $1.since, $1.conversationID) }
+    }
+
+    static func every(_ interval: TimeInterval) -> String {
+        let (count, unit) = span(interval)
+        return count == 1 ? "every \(unit)" : "every \(count) \(unit)s"
+    }
+
+    static func been(_ interval: TimeInterval) -> String {
+        let (count, unit) = span(interval)
+        return count == 1 ? "a \(unit)" : "\(count) \(unit)s"
+    }
+
+    private static func span(_ interval: TimeInterval) -> (count: Int, unit: String) {
+        let days = max(1, Int((interval / 86_400).rounded()))
+        if days < 14 { return (days, "day") }
+        if days < 60 { return (Int((Double(days) / 7).rounded()), "week") }
+        return (Int((Double(days) / 30).rounded()), "month")
+    }
+}

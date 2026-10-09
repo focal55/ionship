@@ -110,3 +110,78 @@ private func conversation(group: Bool = false) -> Conversation {
         #expect(find([]) == nil)
     }
 }
+
+@Suite struct WaitingKindsTests {
+    func metrics(lastLongDaysAgo: Double, usualGapDays: Double) -> RelationshipMetrics {
+        RelationshipMetrics(
+            messageCount: 100, conversations: 10, youStartShare: 0.5, yourMedianReply: 600, theirMedianReply: 600,
+            yourRecentMedianReply: 600, lastLongConversation: now.addingTimeInterval(-lastLongDaysAgo * day),
+            usualGapBetweenLongConversations: usualGapDays * day, weekly: [])
+    }
+
+    @Test func promiseReadsAsWhatYouSaid() {
+        let item = Waiting.promised(in: conversation(), task: "Send the Big Sur photos", made: now, newestMessageID: 40)
+        #expect(item.kind == .promised)
+        #expect(item.text == "You said you'd send the Big Sur photos")
+        #expect(item.steer == "follow up on: send the Big Sur photos")
+        #expect(item.since == now)
+        #expect(item.newestMessageID == 40)
+        #expect(item.conversationID == 7)
+    }
+
+    @Test func goneQuietUsesTheOverdueObservation() {
+        let item = Waiting.quiet(in: conversation(), metrics: metrics(lastLongDaysAgo: 35, usualGapDays: 14),
+                                 newestMessageID: 9, now: now)
+        #expect(item?.kind == .quiet)
+        #expect(item?.text == "You usually talk every 2 weeks; it's been 5 weeks")
+        #expect(item?.steer == "reconnect")
+        #expect(item?.since == now.addingTimeInterval(-35 * day))
+        #expect(item?.newestMessageID == 9)
+    }
+
+    @Test func onScheduleIsNotQuiet() {
+        #expect(Waiting.quiet(in: conversation(), metrics: metrics(lastLongDaysAgo: 10, usualGapDays: 14),
+                              newestMessageID: 9, now: now) == nil)
+    }
+
+    @Test func groupsAreNeverQuiet() {
+        #expect(Waiting.quiet(in: conversation(group: true), metrics: metrics(lastLongDaysAgo: 35, usualGapDays: 14),
+                              newestMessageID: 9, now: now) == nil)
+    }
+
+    @Test(arguments: [(1.0, "every day", "a day"), (3.0, "every 3 days", "3 days"), (14.0, "every 2 weeks", "2 weeks"),
+                      (30.0, "every 4 weeks", "4 weeks"), (90.0, "every 3 months", "3 months")])
+    func durationsReadNaturally(_ c: (days: Double, every: String, been: String)) {
+        #expect(Waiting.every(c.days * day) == c.every)
+        #expect(Waiting.been(c.days * day) == c.been)
+    }
+}
+
+@Suite struct WaitingRankTests {
+    func item(_ id: Int64, _ kind: Waiting.Kind, daysAgo: Double, newest: Int64 = 100) -> Waiting {
+        Waiting(conversationID: id, kind: kind, text: "", steer: "", since: now.addingTimeInterval(-daysAgo * day),
+                newestMessageID: newest)
+    }
+
+    @Test func mostUrgentKindFirstThenOldest() {
+        let ranked = Waiting.rank([item(1, .quiet, daysAgo: 40), item(2, .unanswered, daysAgo: 1), item(3, .asked, daysAgo: 1),
+                                   item(4, .unanswered, daysAgo: 3), item(5, .promised, daysAgo: 2)])
+        #expect(ranked.map(\.conversationID) == [3, 4, 2, 5, 1])
+    }
+
+    @Test func oneRowPerConversationUnderItsMostUrgentKind() {
+        let ranked = Waiting.rank([item(1, .promised, daysAgo: 5), item(1, .unanswered, daysAgo: 1), item(1, .quiet, daysAgo: 40)])
+        #expect(ranked.map(\.kind) == [.unanswered])
+    }
+
+    @Test func oldestPromiseRepresentsAConversation() {
+        let ranked = Waiting.rank([item(1, .promised, daysAgo: 2), item(1, .promised, daysAgo: 9)])
+        #expect(ranked.map(\.since) == [now.addingTimeInterval(-9 * day)])
+    }
+
+    @Test func dismissedStaysHiddenUntilSomethingNewArrives() {
+        #expect(Waiting.rank([item(1, .asked, daysAgo: 1, newest: 100)], dismissed: [1: 100]).isEmpty)
+        #expect(Waiting.rank([item(1, .asked, daysAgo: 1, newest: 101)], dismissed: [1: 100]).count == 1)
+        #expect(Waiting.rank([item(2, .asked, daysAgo: 1)], dismissed: [1: 100]).count == 1)
+    }
+}
