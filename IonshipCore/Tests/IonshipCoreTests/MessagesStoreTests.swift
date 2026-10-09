@@ -135,4 +135,20 @@ import Testing
         let empty = try Fixture(seed: false)
         #expect(try MessagesStore(path: empty.path).latestRowID() == 0)
     }
+
+    @Test func chatsCarryServiceAndFirstMessageDate() throws {
+        let chats = try store.chats()
+        let one = try #require(chats.first { $0.id == 1 })
+        #expect(one.service == "iMessage")
+        let group = try #require(chats.first { $0.id == 2 })
+        #expect(group.service == "SMS")
+        #expect(group.firstMessageDate == Date(timeIntervalSinceReferenceDate: 6000))
+    }
+
+    @Test func olderDatabasesWithoutServiceStillLoad() throws {
+        let stripped = Fixture.schema.replacingOccurrences(of: ", service_name TEXT", with: "")
+        let fixture = try Fixture(schema: stripped, seed: false)
+        try fixture.exec("INSERT INTO chat (ROWID, guid, chat_identifier, display_name, style) VALUES (1, 'g', 'x', '', 45)")
+        #expect(try MessagesStore(path: fixture.path).chats().first?.service == nil)
+    }
 }

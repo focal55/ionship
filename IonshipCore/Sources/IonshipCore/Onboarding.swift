@@ -34,6 +34,13 @@ public struct Conversation: Sendable, Equatable, Identifiable {
     public var identifier: String { chats[0].identifier }
     public var messageCount: Int { chats.reduce(0) { $0 + $1.messageCount } }
     public var lastMessageDate: Date? { chats.compactMap(\.lastMessageDate).max() }
+    public var firstMessageDate: Date? { chats.compactMap(\.firstMessageDate).min() }
+
+    /// "iMessage", "SMS", or both when one person's chats span services.
+    public var service: String? {
+        let services = Array(Set(chats.compactMap(\.service))).sorted()
+        return services.isEmpty ? nil : services.joined(separator: " + ")
+    }
 
     public var participants: [String] {
         var seen = Set<String>()

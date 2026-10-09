@@ -88,9 +88,9 @@ final class Fixture {
         try exec("""
             INSERT INTO handle (ROWID, id, service) VALUES
                 (1, '+15551234567', 'iMessage'), (2, 'alice@example.com', 'iMessage'), (3, '+15559876543', 'SMS');
-            INSERT INTO chat (ROWID, guid, chat_identifier, display_name, style) VALUES
-                (1, 'iMessage;-;+15551234567', '+15551234567', '', 45),
-                (2, 'iMessage;+;chat123', 'chat123', 'Fam', 43);
+            INSERT INTO chat (ROWID, guid, chat_identifier, display_name, style, service_name) VALUES
+                (1, 'iMessage;-;+15551234567', '+15551234567', '', 45, 'iMessage'),
+                (2, 'iMessage;+;chat123', 'chat123', 'Fam', 43, 'SMS');
             INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (1, 1), (2, 3), (2, 2);
             """)
         try insertMessage(rowID: 1, chatID: 1, text: "hello", handleID: 1, date: ns(1000))
@@ -112,7 +112,7 @@ final class Fixture {
             item_type INTEGER DEFAULT 0);
         CREATE TABLE handle (ROWID INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, id TEXT NOT NULL, service TEXT NOT NULL);
         CREATE TABLE chat (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL, chat_identifier TEXT,
-            display_name TEXT, style INTEGER);
+            display_name TEXT, style INTEGER, service_name TEXT);
         CREATE TABLE chat_message_join (chat_id INTEGER REFERENCES chat (ROWID) ON DELETE CASCADE,
             message_id INTEGER REFERENCES message (ROWID) ON DELETE CASCADE, PRIMARY KEY (chat_id, message_id));
         CREATE TABLE chat_handle_join (chat_id INTEGER REFERENCES chat (ROWID) ON DELETE CASCADE,

@@ -8,9 +8,12 @@ public struct Chat: Sendable, Equatable, Identifiable {
     public let participants: [String]
     public let messageCount: Int
     public let lastMessageDate: Date?
+    public let firstMessageDate: Date?
+    /// "iMessage", "SMS" or "RCS"; nil on databases that do not record it.
+    public let service: String?
 
     public init(id: Int64, identifier: String, displayName: String?, isGroup: Bool, participants: [String],
-                messageCount: Int, lastMessageDate: Date?) {
+                messageCount: Int, lastMessageDate: Date?, firstMessageDate: Date? = nil, service: String? = nil) {
         self.id = id
         self.identifier = identifier
         self.displayName = displayName
@@ -18,6 +21,8 @@ public struct Chat: Sendable, Equatable, Identifiable {
         self.participants = participants
         self.messageCount = messageCount
         self.lastMessageDate = lastMessageDate
+        self.firstMessageDate = firstMessageDate
+        self.service = service
     }
 }
 

@@ -64,9 +64,13 @@ public final class MessagesStore {
             participants[row.int(0), default: []].append(row.string(1) ?? "")
         }
 
+        var chatColumns = Set<String>()
+        try query("SELECT name FROM pragma_table_info('chat')") { chatColumns.insert($0.string(0) ?? "") }
+        let service = chatColumns.contains("service_name") ? "c.service_name" : "NULL"
+
         var chats: [Chat] = []
         try query("""
-            SELECT c.ROWID, c.chat_identifier, c.display_name, c.style, COUNT(m.ROWID), MAX(m.date)
+            SELECT c.ROWID, c.chat_identifier, c.display_name, c.style, COUNT(m.ROWID), MAX(m.date), MIN(m.date), \(service)
             FROM chat c
             LEFT JOIN chat_message_join cmj ON cmj.chat_id = c.ROWID
             LEFT JOIN message m ON m.ROWID = cmj.message_id
@@ -81,7 +85,9 @@ public final class MessagesStore {
                 isGroup: row.int(3) == Self.groupChatStyle,
                 participants: participants[id] ?? [],
                 messageCount: Int(row.int(4)),
-                lastMessageDate: row.isNull(5) ? nil : Self.date(fromMessagesTimestamp: row.int(5))
+                lastMessageDate: row.isNull(5) ? nil : Self.date(fromMessagesTimestamp: row.int(5)),
+                firstMessageDate: row.isNull(6) ? nil : Self.date(fromMessagesTimestamp: row.int(6)),
+                service: row.string(7).flatMap { $0.isEmpty ? nil : $0 }
             ))
         }
         return chats.sorted { ($0.lastMessageDate ?? .distantPast) > ($1.lastMessageDate ?? .distantPast) }
