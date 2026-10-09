@@ -5,6 +5,7 @@ import SwiftUI
 struct DraftPanel: View {
     let person: PersonHealth
     let draft: (PersonHealth, String) async -> DraftResult
+    var initialSteer = ""
 
     @State private var steer = ""
     @State var result: DraftResult?
@@ -42,6 +43,11 @@ struct DraftPanel: View {
         .frame(maxWidth: .infinity)
         .background(Theme.ground)
         .onChange(of: person.id) { result = nil; steer = "" }
+        .onAppear {
+            guard result == nil else { return }
+            steer = initialSteer
+            generate()
+        }
     }
 
     private func generate() {

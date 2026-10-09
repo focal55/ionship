@@ -46,9 +46,17 @@ struct PersonHealth: Identifiable, Equatable {
     }
 }
 
+enum Relationship: String, CaseIterable, Identifiable {
+    case family = "Family"
+    case friend = "Friend"
+    case work = "Work"
+    var id: Self { self }
+}
+
 struct MemoryResult: Identifiable, Equatable {
     let moment: Moment
     let title: String
+    var score: Float = 0
     var id: String { moment.id }
 }
 
@@ -65,6 +73,89 @@ final class AppModel {
     }
 
     private static let selectionKey = "selectedChatIDs"
+    private static let labelsKey = "relationshipLabels"
+    private static let pinnedKey = "pinnedConversations"
+
+    private(set) var labels: [Int64: Relationship] = {
+        let stored = UserDefaults.standard.dictionary(forKey: AppModel.labelsKey) as? [String: String] ?? [:]
+        return Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in
+            Int64(key).flatMap { id in Relationship(rawValue: value).map { (id, $0) } }
+        })
+    }()
+    private(set) var pinned = Set((UserDefaults.standard.array(forKey: AppModel.pinnedKey) as? [Int] ?? []).map(Int64.init))
+
+    func setLabel(_ label: Relationship?, for id: Int64) {
+        labels[id] = label
+        UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: labels.map { (String($0.key), $0.value.rawValue) }), forKey: Self.labelsKey)
+    }
+
+    func togglePin(_ id: Int64) {
+        if pinned.remove(id) == nil { pinned.insert(id) }
+        UserDefaults.standard.set(pinned.map(Int.init), forKey: Self.pinnedKey)
+    }
+
+    func since(_ person: PersonHealth) -> Date? {
+        threads[person.id]?.first?.date
+    }
+
+    func lastMessage(_ person: PersonHealth) -> Message? {
+        threads[person.id]?.last { $0.kind == .text || $0.kind == .attachmentOnly }
+    }
+
+    /// The Lens looks at the last ninety days.
+    func lensMetrics(for person: PersonHealth) -> RelationshipMetrics {
+        let cutoff = Date.now.addingTimeInterval(-RelationshipMetrics.recentWindow)
+        return RelationshipMetrics.compute((threads[person.id] ?? []).filter { $0.date >= cutoff })
+    }
+
+    func temperature(for person: PersonHealth) -> Temperature {
+        Temperature(of: threads[person.id] ?? [])
+    }
+
+    private var topicsCache: [Int64: [String]] = [:]
+
+    func topics(for person: PersonHealth) async -> [String] {
+        if let cached = topicsCache[person.id] { return cached }
+        let name = speakerName(for: person)
+        let topics = await TopicExtractor.topics(in: threads[person.id] ?? [], name: name)
+        topicsCache[person.id] = topics
+        return topics
+    }
+
+    /// The best older moment with this person that relates to what was just said.
+    private var recalledCache: [Int64: MemoryResult] = [:]
+
+    func recalled(for person: PersonHealth) async -> MemoryResult? {
+        if let cached = recalledCache[person.id] { return cached }
+        guard memoryEnabled else { return nil }
+        let recentText = (threads[person.id] ?? []).suffix(6).compactMap(\.text).joined(separator: " ")
+        guard !recentText.isEmpty else { return nil }
+        let id = person.id
+        let cutoff = Date.now.addingTimeInterval(-14 * 86_400)
+        let hit = await Task.detached { () -> MemoryIndex.Hit? in
+            guard let memory = Self.openMemory() else { return nil }
+            return try? memory.index.search(recentText, embedder: memory.embedder, limit: 1, conversationID: id, endingBefore: cutoff).first
+        }.value
+        return hit.map { MemoryResult(moment: $0.moment, title: person.title, score: $0.score) }
+    }
+
+    func searchMemory(_ text: String, in person: PersonHealth) async -> [MemoryResult] {
+        guard memoryEnabled else { return [] }
+        let id = person.id
+        let hits = await Task.detached { () -> [MemoryIndex.Hit] in
+            guard let memory = Self.openMemory() else { return [] }
+            return (try? memory.index.search(text, embedder: memory.embedder, limit: 30, conversationID: id)) ?? []
+        }.value
+        return hits.map { MemoryResult(moment: $0.moment, title: person.title, score: $0.score) }
+    }
+
+    func speakerName(for person: PersonHealth) -> (String?) -> String {
+        let isGroup = person.conversation.isGroup
+        return { handle in
+            guard let handle else { return "You" }
+            return person.memberNames[handle] ?? (isGroup ? handle : person.title)
+        }
+    }
 
     private(set) var phase = Phase.checking
     private(set) var people: [PersonHealth] = []
@@ -160,7 +251,7 @@ final class AppModel {
             return (try? memory.index.search(text, embedder: memory.embedder, limit: 30)) ?? []
         }.value
         return hits.compactMap { hit in
-            titles[hit.moment.conversationID].map { MemoryResult(moment: hit.moment, title: $0) }
+            titles[hit.moment.conversationID].map { MemoryResult(moment: hit.moment, title: $0, score: hit.score) }
         }
     }
 
@@ -303,5 +394,48 @@ final class AppModel {
             loops[id] = nil
             updateMemory(for: [people[index]])
         }
+    }
+}
+
+extension AppModel {
+    /// Sample data shaped like the design mock, for SwiftUI previews only.
+    static func preview() -> AppModel {
+        let model = AppModel()
+        let day: TimeInterval = 86_400
+        func message(_ id: Int64, _ me: Bool, _ text: String, daysAgo: Double, chat: Int64 = 2) -> Message {
+            Message(id: id, guid: "\(id)", chatID: chat, sender: me ? nil : "maya@example.com", isFromMe: me,
+                    date: .now.addingTimeInterval(-daysAgo * day), text: text, textSource: .column, kind: .text)
+        }
+        var history: [Message] = []
+        for week in stride(from: 160, to: 8, by: -2) {
+            history.append(message(Int64(1000 + week * 2), false, "how was your week", daysAgo: Double(week)))
+            history.append(message(Int64(1001 + week * 2), true, "pretty good! busy with the move stuff", daysAgo: Double(week) - 0.01))
+        }
+        let maya = history + [
+            message(1, false, "Interview went… fine? I think? They want a second round", daysAgo: 6),
+            message(2, true, "That’s huge. When’s round two", daysAgo: 5.99),
+            message(3, false, "Next Thursday. Also still waiting on those Big Sur photos", daysAgo: 5.98),
+            message(4, true, "Yes yes. Tonight, promise", daysAgo: 5.97),
+            message(5, false, "haha ok but did you ever find those photos", daysAgo: 0.1),
+        ]
+        let mayaChat = Chat(id: 2, identifier: "maya@example.com", displayName: nil, isGroup: false, participants: ["maya@example.com"],
+                            messageCount: maya.count, lastMessageDate: maya.last?.date)
+        var people = samplePeople().filter { !$0.conversation.isGroup && $0.id != 2 }
+        people.insert(PersonHealth(conversation: Conversation(chats: [mayaChat]), title: "Maya Chen",
+                                   health: .person(RelationshipMetrics.compute(maya))), at: 0)
+        people.append(sampleGroup())
+        model.people = people
+        model.threads = [2: maya.sorted { $0.date < $1.date }]
+        model.loops[2] = .judged([
+            OpenLoop(id: 4, task: "Send the Big Sur photos", date: maya[maya.count - 2].date, isConfirmed: true),
+            OpenLoop(id: 2, task: "Ask how round two goes", date: maya[maya.count - 4].date, isConfirmed: true),
+        ])
+        model.topicsCache[2] = ["job search", "portland move", "climbing", "her sister", "photos"]
+        let wedding = Moment(conversationID: 2, firstMessageID: 900, lastMessageID: 901, start: .now.addingTimeInterval(-50 * day),
+                             end: .now.addingTimeInterval(-50 * day), text: "Maya Chen: my sister’s wedding is Nov 8 in Portland, can you come?")
+        model.recalledCache[2] = MemoryResult(moment: wedding, title: "Maya Chen", score: 0.91)
+        model.labels = [2: .friend]
+        model.phase = .health
+        return model
     }
 }
