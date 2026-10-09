@@ -285,14 +285,15 @@ final class AppModel {
         }
     }
 
-    func draftReply(for person: PersonHealth, steer: String) async -> DraftResult {
-        let open: [String]
-        if case .judged(let loops) = loops[person.id] { open = loops.filter(\.isConfirmed).map(\.task) } else { open = [] }
-        let isGroup = person.conversation.isGroup
-        return await ReplyDrafter.draft(messages: threads[person.id] ?? [], name: { handle in
-            guard let handle else { return "You" }
-            return person.memberNames[handle] ?? (isGroup ? handle : person.title)
-        }, openLoops: open, steer: steer, isGroup: isGroup)
+    func confirmedLoops(for person: PersonHealth) -> [OpenLoop] {
+        if case .judged(let items) = loops[person.id] { return items.filter(\.isConfirmed) }
+        return []
+    }
+
+    func draftReply(for person: PersonHealth, steer: String, length: DraftLength) async -> DraftResult {
+        await ReplyDrafter.draft(messages: threads[person.id] ?? [], name: speakerName(for: person),
+                                 openLoops: confirmedLoops(for: person).map(\.task), steer: steer, length: length,
+                                 isGroup: person.conversation.isGroup)
     }
 
     func openLoops(for person: PersonHealth) async -> OpenLoops {

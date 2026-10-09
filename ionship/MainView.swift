@@ -23,7 +23,7 @@ struct MainView: View {
     struct DraftRequest: Identifiable {
         let person: PersonHealth
         let steer: String
-        var id: String { "\(person.id)-\(steer)" }
+        let id = UUID()
     }
 
     private var selected: PersonHealth? {
@@ -37,11 +37,15 @@ struct MainView: View {
             HStack(spacing: 0) {
                 Sidebar(model: model, selection: selected?.id) { id in
                     selection = id
+                    draftRequest = nil
                     focus = nil
                     results = nil
                 }
                 Divider().overlay(Theme.hairline)
-                if let results {
+                if let request = draftRequest {
+                    DraftComposerView(model: model, person: request.person, close: { draftRequest = nil }, steer: request.steer)
+                        .id(request.id)
+                } else if let results {
                     MemoryResultsView(query: query, results: results) { open($0) }
                 } else if let person = selected {
                     center(person)
@@ -51,11 +55,6 @@ struct MainView: View {
                     }
                 }
             }
-        }
-        .sheet(item: $draftRequest) { request in
-            DraftPanel(person: request.person, draft: model.draftReply(for:steer:), initialSteer: request.steer)
-                .frame(width: 760)
-                .presentationBackground(Theme.ground)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(model: model).frame(width: 960, height: 720)
@@ -155,6 +154,7 @@ struct MainView: View {
     private func runSearch() {
         let text = query.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { results = nil; return }
+        draftRequest = nil
         Task { results = await model.searchMemory(text) }
     }
 
