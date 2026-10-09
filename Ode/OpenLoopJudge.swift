@@ -40,43 +40,54 @@ enum OpenLoopJudge {
         the messages after it show it was done. Judge only from the excerpt.
         """
 
+    struct Verdict {
+        let isPromise: Bool
+        let task: String
+        let status: LoopStatus
+    }
+
     /// Runs entirely on device. Each candidate gets a fresh session so the small context
-    /// window only ever holds one excerpt.
+    /// window only ever holds one excerpt. `known` holds verdicts by excerpt from an earlier run:
+    /// an excerpt that hasn't changed isn't judged again. Returns the verdicts this run used.
     static func evaluate(_ candidates: [OpenLoopCandidate], name: (String?) -> String, limit: Int = 15,
-                         cloud: CloudRunner? = nil) async -> OpenLoops {
+                         cloud: CloudRunner? = nil, known: [String: Verdict] = [:]) async -> (OpenLoops, [String: Verdict]) {
         let recent = Array(candidates.prefix(limit))
         guard cloud != nil || SystemLanguageModel.default.isAvailable else {
-            return .unjudged(recent.map { OpenLoop(id: $0.id, task: $0.message.text ?? "", date: $0.message.date, isConfirmed: false) })
+            return (.unjudged(recent.map { OpenLoop(id: $0.id, task: $0.message.text ?? "", date: $0.message.date, isConfirmed: false) }), [:])
         }
         var loops: [OpenLoop] = []
+        var verdicts: [String: Verdict] = [:]
         for candidate in recent {
             let prompt = excerpt(candidate, name: name)
-            guard let verdict = await judge(prompt, cloud: cloud) else {
+            var verdict = known[prompt]
+            if verdict == nil { verdict = await judge(prompt, cloud: cloud) }
+            guard let verdict else {
                 // The safety filter blocks some ordinary messages at random; show these unjudged rather than drop them.
                 loops.append(OpenLoop(id: candidate.id, task: String((candidate.message.text ?? "").prefix(120)),
                                       date: candidate.message.date, isConfirmed: false))
                 continue
             }
+            verdicts[prompt] = verdict
             guard verdict.isPromise, verdict.status != .done else { continue }
             loops.append(OpenLoop(id: candidate.id, task: verdict.task, date: candidate.message.date,
                                   isConfirmed: verdict.status == .open))
         }
-        return .judged(loops)
+        return (.judged(loops), verdicts)
     }
 
     /// The routed cloud model first; then the on-device model with one retry, since its
     /// guardrail blocks on this kind of text are intermittent.
-    private static func judge(_ prompt: String, cloud: CloudRunner?) async -> (isPromise: Bool, task: String, status: LoopStatus)? {
+    private static func judge(_ prompt: String, cloud: CloudRunner?) async -> Verdict? {
         if let cloud, let data = await cloud(CloudRequest(system: instructions, prompt: prompt, schemaName: "verdict", schema: CloudSchemas.verdict)),
            let verdict = try? JSONDecoder().decode(CloudSchemas.Verdict.self, from: data) {
             let status: LoopStatus = verdict.status == "done" ? .done : verdict.status == "open" ? .open : .unclear
-            return (verdict.isPromise, verdict.task, status)
+            return Verdict(isPromise: verdict.isPromise, task: verdict.task, status: status)
         }
         guard SystemLanguageModel.default.isAvailable else { return nil }
         for _ in 0..<2 {
             let session = LanguageModelSession(instructions: instructions)
             if let verdict = try? await session.respond(to: prompt, generating: LoopVerdict.self).content {
-                return (verdict.isPromise, verdict.task, verdict.status)
+                return Verdict(isPromise: verdict.isPromise, task: verdict.task, status: verdict.status)
             }
         }
         return nil

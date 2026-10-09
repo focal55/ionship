@@ -232,6 +232,9 @@ final class AppModel {
     /// Every message of every chosen conversation, oldest first, kept current by live sync.
     private(set) var threads: [Int64: [Message]] = [:]
     private var loops: [Int64: OpenLoops] = [:]
+    private var loopGeneration: [Int64: Int] = [:]
+    private var judging: [Int64: (generation: Int, task: Task<(OpenLoops, [String: OpenLoopJudge.Verdict]), Never>)] = [:]
+    private var verdicts: [Int64: [String: OpenLoopJudge.Verdict]] = [:]
     private var cursor: Int64 = 0
     private var syncing: Task<Void, Never>?
     private static let memoryEnabledKey = "memoryEnabled"
@@ -335,7 +338,7 @@ final class AppModel {
     var waiting: [Waiting] {
         let items = people.flatMap { person -> [Waiting] in
             let thread = threads[person.id] ?? []
-            let newest = thread.map(\.id).max() ?? 0
+            let newest = Waiting.newestSpokenID(in: thread)
             var found = confirmedLoops(for: person).map {
                 Waiting.promised(in: person.conversation, task: $0.task, made: $0.date, newestMessageID: newest)
             }
@@ -356,12 +359,16 @@ final class AppModel {
     }
 
     /// Judges open loops for everyone not judged yet, so promises reach the home list without opening each person.
+    /// Only on device: people whose quick reads go to a cloud model are judged when you open them, which is
+    /// where the consent prompt belongs.
     private func judgePromises() {
         guard !checkingPromises else { return }
         checkingPromises = true
         Task {
-            while let person = people.first(where: { loops[$0.id] == nil }) {
-                _ = await openLoops(for: person)
+            while let person = people.first(where: {
+                loops[$0.id] == nil && ai.route(for: .quickReads, label: labels[$0.id]).provider == .onDevice
+            }) {
+                _ = await openLoops(for: person, cloud: nil)
             }
             checkingPromises = false
         }
@@ -374,15 +381,37 @@ final class AppModel {
     }
 
     func openLoops(for person: PersonHealth) async -> OpenLoops {
+        await openLoops(for: person, cloud: cloud(.quickReads, person))
+    }
+
+    /// One judging run per person at a time. A run that started before new messages arrived is
+    /// discarded, and verdicts for excerpts that didn't change are reused rather than judged again.
+    private func openLoops(for person: PersonHealth, cloud runner: CloudRunner?) async -> OpenLoops {
         if let cached = loops[person.id] { return cached }
+        let generation = loopGeneration[person.id, default: 0]
+        if let running = judging[person.id], running.generation == generation { return await running.task.value.0 }
         let candidates = OpenLoopCandidate.find(in: threads[person.id] ?? [])
         let isGroup = person.conversation.isGroup
-        let result = await OpenLoopJudge.evaluate(candidates, name: { handle in
-            guard let handle else { return "You" }
-            return person.memberNames[handle] ?? (isGroup ? handle : person.title)
-        }, cloud: cloud(.quickReads, person))
-        loops[person.id] = result
+        let known = verdicts[person.id] ?? [:]
+        let task = Task {
+            await OpenLoopJudge.evaluate(candidates, name: { handle in
+                guard let handle else { return "You" }
+                return person.memberNames[handle] ?? (isGroup ? handle : person.title)
+            }, cloud: runner, known: known)
+        }
+        judging[person.id] = (generation, task)
+        let (result, judged) = await task.value
+        if loopGeneration[person.id, default: 0] == generation {
+            loops[person.id] = result
+            verdicts[person.id] = judged
+            judging[person.id] = nil
+        }
         return result
+    }
+
+    private func invalidateLoops(_ id: Int64) {
+        loops[id] = nil
+        loopGeneration[id, default: 0] += 1
     }
 
     private func loadChats() async {
@@ -420,7 +449,7 @@ final class AppModel {
                 zip(conversations, loaded).map { PersonHealth.health(for: $0, messages: $1) }
             }.value
             cursor = latest
-            loops = [:]
+            for id in Array(loops.keys) + Array(judging.keys) { invalidateLoops(id) }
             threads = Dictionary(uniqueKeysWithValues: zip(conversations.map(\.id), loaded))
             let names = picker.names
             people = zip(conversations, health)
@@ -472,7 +501,7 @@ final class AppModel {
             guard !Task.isCancelled, let index = people.firstIndex(where: { $0.id == id }) else { return }
             threads[id] = merged
             people[index].health = health
-            loops[id] = nil
+            invalidateLoops(id)
             updateMemory(for: [people[index]])
         }
         judgePromises()
