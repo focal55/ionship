@@ -18,6 +18,7 @@ struct MainView: View {
     @State private var focus: Int64?
     @State private var draftRequest: DraftRequest?
     @State private var showingSettings = false
+    @State private var home = true
     @FocusState private var searchFocused: Bool
 
     struct DraftRequest: Identifiable {
@@ -35,8 +36,14 @@ struct MainView: View {
             topBar
             Divider().overlay(Theme.hairline)
             HStack(spacing: 0) {
-                Sidebar(model: model, selection: selected?.id) { id in
+                Sidebar(model: model, selection: home ? nil : selected?.id, home: home, showHome: {
+                    home = true
+                    draftRequest = nil
+                    focus = nil
+                    results = nil
+                }) { id in
                     selection = id
+                    home = false
                     draftRequest = nil
                     focus = nil
                     results = nil
@@ -47,6 +54,14 @@ struct MainView: View {
                         .id(request.id)
                 } else if let results {
                     MemoryResultsView(query: query, results: results) { open($0) }
+                } else if home {
+                    WaitingView(model: model, reply: { person, steer in
+                        draftRequest = DraftRequest(person: person, steer: steer)
+                    }, open: { id in
+                        selection = id
+                        tab = .thread
+                        home = false
+                    })
                 } else if let person = selected {
                     center(person)
                     if tab != .health {
@@ -179,6 +194,7 @@ struct MainView: View {
     }
 
     private func open(_ result: MemoryResult) {
+        home = false
         selection = result.moment.conversationID
         focus = result.moment.firstMessageID
         tab = .thread
@@ -189,6 +205,8 @@ struct MainView: View {
 private struct Sidebar: View {
     @Bindable var model: AppModel
     let selection: Int64?
+    let home: Bool
+    let showHome: () -> Void
     let select: (Int64) -> Void
     @State private var confirmingMemoryDelete = false
 
@@ -196,6 +214,7 @@ private struct Sidebar: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    homeEntry
                     let individuals = model.people.filter { !$0.conversation.isGroup }
                     section("Pinned", model.people.filter { model.pinned.contains($0.id) })
                     ForEach(Relationship.allCases) { label in
@@ -227,6 +246,31 @@ private struct Sidebar: View {
             }
         }
         .frame(width: 280)
+    }
+
+    private var homeEntry: some View {
+        let count = model.waiting.count
+        return Button(action: showHome) {
+            HStack(spacing: 10) {
+                Image(systemName: "tray").font(.system(size: 14)).frame(width: 32, height: 32)
+                Text("Waiting on you").font(.system(size: 14, weight: .medium))
+                Spacer()
+                if count > 0 {
+                    Text("\(count)")
+                        .font(Theme.mono(11))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .frame(height: 18)
+                        .background(Theme.accent, in: .capsule)
+                }
+            }
+            .padding(8)
+            .background(home ? Theme.surface : .clear, in: .rect(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(home ? Theme.hairline : .clear))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Waiting on you, \(count)")
     }
 
     @ViewBuilder private func section(_ title: String, _ rows: [PersonHealth]) -> some View {
