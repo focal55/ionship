@@ -157,8 +157,13 @@ public final class MemoryIndex {
         return result
     }
 
-    public func search(_ text: String, embedder: any Embedder, limit: Int = 20) throws -> [Hit] {
-        let rows = try loadCache()
+    /// `conversationID` limits results to one conversation; `endingBefore` drops recent moments,
+    /// which is how the Lens recalls older context rather than what is already on screen.
+    public func search(_ text: String, embedder: any Embedder, limit: Int = 20,
+                       conversationID: Int64? = nil, endingBefore: Date? = nil) throws -> [Hit] {
+        let rows = try loadCache().filter { row in
+            (conversationID.map { row.moment.conversationID == $0 } ?? true) && (endingBefore.map { row.moment.end < $0 } ?? true)
+        }
         let queryVector = embedder.vector(for: text).map(Self.normalized)
         let words = text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init).filter { $0.count >= 2 }
 
